@@ -35,7 +35,7 @@ st.markdown("""
         margin-bottom: 15px;
     }
     </style>
-""", unsafe_style_html=True)
+""", unsafe_allow_html=True)
 
 # Encabezado principal
 st.markdown('<div class="main-title">💎 TaxFlow-Diamond</div>', unsafe_style_html=True)
@@ -141,7 +141,7 @@ if banco_file and facturas_file:
                 
     except Exception as e:
         st.error(f"Error Operacional: No se pudo procesar la conciliación automatizada.")
-        st.info(f"Detalle técnico técnico: {e}. Valida que las columnas seleccionadas contengan valores estrictamente numéricos y sin filas de encabezados corruptas.")
+        st.info(f"Detalle técnico: {e}. Valida que las columnas seleccionadas contengan valores estrictamente numéricos.")
 else:
     # Contenedor de espera inicial para guiar al usuario corporativo
     st.info("💡 Suite lista para operar. Por favor, cargue los archivos del Estado de Cuenta Bancario y el Reporte de Facturas en la sección superior para iniciar el análisis.")
