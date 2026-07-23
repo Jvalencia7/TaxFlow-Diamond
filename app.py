@@ -37,14 +37,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Encabezado principal
-st.markdown('<div class="main-title">💎 TaxFlow-Diamond</div>', unsafe_style_html=True)
-st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_style_html=True)
+# Encabezado principal (CORREGIDO)
+st.markdown('<div class="main-title">💎 TaxFlow-Diamond</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
 
 # ==========================================
 # 2. SECCIÓN DE CARGA DE DOCUMENTOS
 # ==========================================
-st.markdown('<div class="section-header">📂 Importación de Datos Financieros</div>', unsafe_style_html=True)
+st.markdown('<div class="section-header">📂 Importación de Datos Financieros</div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
@@ -74,7 +74,7 @@ if banco_file and facturas_file:
         
         st.success("🏁 Ambos estados financieros han sido indexados correctamente en el sistema.")
         
-        st.markdown('<div class="section-header">⚙️ Configuración del Mapeo de Columnas</div>', unsafe_style_html=True)
+        st.markdown('<div class="section-header">⚙️ Configuración del Mapeo de Columnas</div>', unsafe_allow_html=True)
         st.write("Identifica las columnas que corresponden a los importes monetarios en cada archivo para ejecutar el cruce:")
         
         c1, c2 = st.columns(2)
@@ -112,7 +112,7 @@ if banco_file and facturas_file:
             # ==========================================
             # 4. TABLERO DE RESULTADOS CORPORATIVOS
             # ==========================================
-            st.markdown('<div class="section-header">📊 Dashboard de Auditoría Analítica</div>', unsafe_style_html=True)
+            st.markdown('<div class="section-header">📊 Dashboard de Auditoría Analítica</div>', unsafe_allow_html=True)
             
             # Métricas de alto impacto visual
             m1, m2, m3 = st.columns(3)
