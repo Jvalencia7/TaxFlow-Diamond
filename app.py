@@ -29,6 +29,8 @@ st.markdown("""
     .kpi-green { background-color: #2ECC71 !important; }
     .kpi-yellow { background-color: #F1C40F !important; }
     .kpi-red { background-color: #E74C3C !important; }
+    .help-card { background-color: #161B22; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #00D4FF; }
+    .help-title { color: #00D4FF; font-size: 18px; font-weight: 600; margin-bottom: 10px; }
     div.stButton > button:first-child[data-testid="stSidebarActionButton"] { background-color: #00D4FF !important; color: #0D1117 !important; font-weight: 700 !important; border: none !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -55,7 +57,7 @@ variables_sesion = {
 for llave, valor_defecto in variables_sesion.items():
     if llave not in st.session_state: st.session_state[llave] = valor_defecto
 # ==============================================================================
-# 3. NAVEGACIÓN SUPERIOR INTEGRAL AMPLIADA A 10 PESTAÑAS CORPORATIVAS
+# 3. NAVEGACIÓN SUPERIOR INTEGRAL DE 10 PESTAÑAS CORPORATIVAS
 # ==============================================================================
 tab_dashboard, tab_bancos, tab_xml, tab_saldos, tab_multidivisa, tab_nomina, tab_inventarios, tab_iva, tab_configuracion, tab_ayuda = st.tabs([
     "📊 Dashboard", "🏦 Bancos vs Auxiliar", "📄 XML vs Contabilidad", "🧾 Clientes y Proveedores", 
@@ -93,17 +95,18 @@ def leer_archivo_contable(file):
 def validar_rfc(rfc):
     pattern = r'^[A-Z&Ñ]{3,4}[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[0-9]|3)[A-Z0-9]{3}$'
     return bool(re.match(pattern, str(rfc).upper().strip()))
-def generar_dictamen_pdf(empresa, periodo, auditor, conciliado, banco_p, aux_p, divisa):
+def generar_dictamen_pdf(empresa, periodo, auditor, conciliado, banco_p, aux_p):
     fig, ax = plt.subplots(figsize=(8.5, 11))
     ax.axis('off')
     plt.text(0.1, 0.92, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=16, weight='bold', color='#00A4CC')
     plt.text(0.1, 0.89, "DICTAMEN FORMAL DE AUDITORÍA Y CONCILIACIÓN DE LIBROS", fontsize=12, weight='bold')
+    plt.text(0.1, 0.85, "------------------------------------------------------------------------------------------------------------------------", color='gray')
     plt.text(0.1, 0.78, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=11)
     plt.text(0.1, 0.75, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=11)
     plt.text(0.1, 0.72, f"Auditor Responsable: {auditor if auditor else 'No Especificado'}", fontsize=11)
-    plt.text(0.1, 0.60, f"(*) Capital Conciliado y Alineado: {divisa} {conciliado:,.2f}", fontsize=11)
-    plt.text(0.1, 0.57, f"(*) Inconsistencias en Estado de Cuenta (Banco): {divisa} {banco_p:,.2f}", fontsize=11)
-    plt.text(0.1, 0.54, f"(*) Inconsistencias en Libro Mayor (Auxiliar): {divisa} {aux_p:,.2f}", fontsize=11)
+    plt.text(0.1, 0.60, f"(*) Capital Conciliado y Alineado: $ {conciliado:,.2f}", fontsize=11)
+    plt.text(0.1, 0.57, f"(*) Inconsistencias en Estado de Cuenta (Banco): $ {banco_p:,.2f}", fontsize=11)
+    plt.text(0.1, 0.54, f"(*) Inconsistencias en Libro Mayor (Auxiliar): $ {aux_p:,.2f}", fontsize=11)
     total_desfase = banco_p + aux_p
     riesgo_status = "CRÍTICO" if total_desfase > (conciliado * 0.05) else "ACEPTABLE"
     plt.text(0.1, 0.45, f"DICTAMEN FINAL DEL AUDITOR: REVISIÓN CON STATUS {riesgo_status}", fontsize=12, weight='bold', color='red' if riesgo_status == "CRÍTICO" else 'green')
@@ -124,12 +127,14 @@ with tab_dashboard:
         elif porcentaje_riesgo <= 5.0: clase_semaforo, mensaje_semaforo = "kpi-yellow", "🟡 RIESGO MODERADO: Monitorear partidas."
         else: clase_semaforo, mensaje_semaforo = "kpi-red", "🔴 ALERTA - RIESGO ALTO: Desfase crítico."
         st.markdown(f"<div class='kpi-card {clase_semaforo}'>{mensaje_semaforo} ({porcentaje_riesgo:.2f}% desfase)</div>", unsafe_allow_html=True)
+        
+        # TARGETAS SOLO CON IMPORTES EN FORMATO DE MONEDA SIN "MXN"
         m1, m2, m3 = st.columns(3)
-        simbolo = st.session_state.divisa.split(" ")
-        m1.metric("Capital Conciliado", f"{simbolo} {st.session_state.suma_conciliado:,.2f}")
-        m2.metric("Pendientes Banco", f"{simbolo} {st.session_state.suma_banco_p:,.2f}", delta_color="inverse")
-        m3.metric("Pendientes Auxiliar", f"{simbolo} {st.session_state.suma_aux_p:,.2f}", delta_color="inverse")
-        pdf_dictamen = generar_dictamen_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor, st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p, simbolo)
+        m1.metric("Capital Conciliado", f"$ {st.session_state.suma_conciliado:,.2f}")
+        m2.metric("Pendientes Banco", f"$ {st.session_state.suma_banco_p:,.2f}", delta_color="inverse")
+        m3.metric("Pendientes Auxiliar", f"$ {st.session_state.suma_aux_p:,.2f}", delta_color="inverse")
+        
+        pdf_dictamen = generar_dictamen_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor, st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p)
         st.download_button(label="📥 Descargar Dictamen Certificado (PDF)", data=pdf_dictamen, file_name="Dictamen_Auditoria.pdf", mime="application/pdf", use_container_width=True)
     else: st.info("💎 Suite Inicializada. Usa los módulos superiores para comenzar la auditoría.")
 
@@ -220,10 +225,10 @@ with tab_saldos:
             cruce['Diferencia'] = pd.to_numeric(cruce[sg_m], errors='coerce').fillna(0) - pd.to_numeric(cruce[fd_m], errors='coerce').fillna(0)
             st.session_state.saldos_conciliados = cruce; st.session_state.saldos_ejecutado = True; st.rerun()
         if st.session_state.saldos_ejecutado: st.dataframe(st.session_state.saldos_conciliados, use_container_width=True)
+
 with tab_multidivisa:
     st.write("")
     st.markdown('<div class="section-header">🌐 Cuentas Internacionales Multidivisa</div>', unsafe_allow_html=True)
-    st.session_state.tc_auditoria_val = st.number_input("TC de Cierre Mensual:", min_value=1.0000, value=float(st.session_state.tc_auditoria_val), step=0.0100)
     if not st.session_state.divisa_cargados:
         cv_1, cv_2 = st.columns(2)
         with cv_1: de_file = st.file_uploader("Sube Cuenta USD", type=["csv", "xlsx"], key="de_u")
@@ -238,7 +243,6 @@ with tab_multidivisa:
             cruce['Diferencia_Cambiaria'] = (cruce['Monto_Limpio'] * st.session_state.tc_auditoria_val) - cruce['Monto_Limpio']
             st.session_state.divisa_conciliados = cruce; st.session_state.divisa_ejecutado = True; st.rerun()
         if st.session_state.divisa_ejecutado: st.dataframe(st.session_state.divisa_conciliados, use_container_width=True)
-
 with tab_nomina:
     st.write("")
     st.markdown('<div class="section-header">👔 Auditoría de Nómina: CFDI Timbrados vs Auxiliar</div>', unsafe_allow_html=True)
@@ -287,7 +291,20 @@ with tab_iva:
             st.session_state.iva_conciliados = pd.merge(st.session_state.df_iva_banco, st.session_state.df_iva_aux, on='Monto_Limpio', how='inner'); st.session_state.iva_ejecutado = True; st.rerun()
         if st.session_state.iva_ejecutado: st.dataframe(st.session_state.iva_conciliados, use_container_width=True)
 
+# ==============================================================================
+# 16. DESPLIEGUE: PESTAÑA MANUAL DE AYUDA Y GUÍA TÉCNICA (EXTENDIDA)
+# ==============================================================================
 with tab_ayuda:
     st.write("")
-    st.markdown('<div class="section-header">❓ Manual Operativo Diamond</div>', unsafe_allow_html=True)
-    st.write("Suite premium de amarres y conciliaciones automatizadas multiplataforma.")
+    st.markdown('<div class="section-header">❓ Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="help-card"><div class="help-title">📊 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y descargable de Dictamen formal institucional en PDF.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">🏦 2. Módulo Bancario (Bancos vs Auxiliar)</div>Herramienta de cruce bidimensional estricto por fecha e importe para cuadrar estados de cuenta bancarios con el libro contable de bancos de la empresa.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">📄 3. XML vs Contabilidad (Auditoría Fiscal)</div>Mapeo inteligente para amarrar facturas electrónicas e identificar de manera inmediata CFDIs omitidos en el Auxiliar de Gastos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">🧾 4. Clientes y Proveedores (Control de Cartera)</div>Herramienta de sumarización automática que cruza la balanza de saldos globales contra los reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">🌐 5. Multidivisa USD (Cuentas Internacionales)</div>Algoritmo de paridad para evaluar operaciones en dólares y calcular de forma exacta el ajuste por ganancia o pérdida cambiaria al cierre del ejercicio.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">👔 6. Nómina CFDI (Auditoría de Sueldos)</div>Cruzamiento masivo para verificar que cada recibo de nómina timbrado ante la autoridad cuente con su correcta póliza de gasto interna.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">📦 7. Inventarios (Control de Almacén)</div>Herramienta de comparación de existencias para confrontar el levantamiento físico real de auditoría contra los saldos del Kárdex contable.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">💸 8. IVA Flujo (Amarre de Impuestos)</div>Módulo especializado para validar que el IVA determinado en la declaración coincida al centavo con el flujo de efectivo real reflejado en los bancos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">⚙️ 9. Configuración y Copias JSON</div>Sección administrativa para gestionar los membretes, la tolerancia decimal de centavos, el selector de moneda y la descarga/carga de respaldos universales de la sesión.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">🔍 10. Rastreador Rápido (Barra Lateral)</div>Buscador transversal de alta frecuencia para rastrear cualquier importe numérico sospechoso de inmediato en todas las tablas activas.</div>', unsafe_allow_html=True)
