@@ -29,9 +29,8 @@ st.markdown('<div class="main-title">💎 TaxFlow-Diamond</div>', unsafe_allow_h
 st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. SISTEMA DE MEMORIA DINÁMICA AUTOSUSTENTABLE (SESSION STATE)
+# 2. SISTEMA DE MEMORIA INTEGRAL CON GUARDADO AUTOMÁTICO DINÁMICO
 # ==============================================================================
-# Diccionario maestro de inicialización contable
 variables_sesion = {
     'df_banco': None, 'df_auxiliar': None, 'archivos_cargados': False,
     'df_conciliados': None, 'bancos_pendientes': None, 'auxiliar_pendientes': None,
@@ -44,7 +43,7 @@ for llave, valor_defecto in variables_sesion.items():
         st.session_state[llave] = valor_defecto
 
 # ==============================================================================
-# 3. PANEL DE CONTROL (BARRA LATERAL) Y ENTRADAS DE AUDITORÍA
+# 3. PANEL DE CONTROL (BARRA LATERAL) Y NAVEGACIÓN
 # ==============================================================================
 st.sidebar.markdown("### 🗺️ Módulos del Sistema")
 modulo_activo = st.sidebar.radio(
@@ -62,68 +61,57 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### ⚙️ Parámetros de Precisión")
 tolerancia = st.sidebar.slider("Margen de Tolerancia de Centavos:", 0.00, 5.00, 0.50, step=0.10)
 
-# Funciones globales de extracción contable
 def leer_archivo_contable(file):
     if file.name.endswith('.csv'): return pd.read_csv(file)
     return pd.read_excel(file)
 # ==============================================================================
-# 4. MOTOR SERIALIZADOR UNIVERSAL (RESPALDO AUTOMÁTICO DE SECCIONES EN JSON)
+# 4. MOTOR DE RESPALDO UNIVERSAL AUTOMÁTICO (.JSON AUTOMÁTICO DE SECCIONES)
 # ==============================================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 💾 Copias de Seguridad (.JSON)")
 
-# ACCIÓN 1: El algoritmo lee dinámicamente CUALQUIER sección nueva agregada a st.session_state
 if st.session_state.ejecutado:
     respaldo_dinamico = {}
-    for llave, valor in st.session_state.items():
-        # Si la sección es una tabla (Dataframe), la convierte a JSON estructurado
+    for llave in variables_sesion.keys():
+        valor = st.session_state[llave]
         if isinstance(valor, pd.DataFrame):
             respaldo_dinamico[llave] = {"tipo": "dataframe", "datos": valor.to_json(orient='split')}
-        # Si la sección es un texto, número o booleano válido, lo empaqueta directo
-        elif isinstance(valor, (str, int, float, bool)) or valor is None:
+        else:
             respaldo_dinamico[llave] = {"tipo": "nativo", "datos": valor}
             
     json_string = json.dumps(respaldo_dinamico)
-    
     st.sidebar.download_button(
         label="📥 Guardar Auditoría en JSON",
         data=json_string,
-        file_name=f"Backup_Universal_{st.session_state.empresa if st.session_state.empresa else 'TaxFlow'}.json",
+        file_name=f"Backup_Auditoria_{st.session_state.empresa if st.session_state.empresa else 'TaxFlow'}.json",
         mime="application/json",
         use_container_width=True
     )
 else:
-    st.sidebar.info("💡 Ejecuta una conciliación primero para habilitar el respaldo dinámico de secciones.")
+    st.sidebar.info("💡 Ejecuta una conciliación primero para habilitar la descarga del respaldo JSON.")
 
-# ACCIÓN 2: Lector e inyector universal de datos guardados
 archivo_json_cargado = st.sidebar.file_uploader("📂 Cargar Auditoría (.JSON)", type=["json"], key="json_uploader")
 
 if archivo_json_cargado is not None:
     try:
         datos_restaurados = json.load(archivo_json_cargado)
-        
-        # El motor inyecta de vuelta las variables a st.session_state sin importar cuántas secciones existan
-        for llave, contenedor in datos_restaurados.items():
-            if contenedor["tipo"] == "dataframe" and contenedor["datos"] is not None:
-                st.session_state[llave] = pd.read_json(io.StringIO(contenedor["datos"]), orient='split')
+        for llave, paquete in datos_restaurados.items():
+            if paquete["tipo"] == "dataframe" and paquete["datos"] is not None:
+                st.session_state[llave] = pd.read_json(io.StringIO(paquete["datos"]), orient='split')
             else:
-                st.session_state[llave] = contenedor["datos"]
-        
-        st.session_state.archivos_cargados = True
-        st.session_state.ejecutado = True
-        st.sidebar.success("✓ Todas las secciones restauradas.")
+                st.session_state[llave] = paquete["datos"]
+        st.sidebar.success("✓ Respaldo cargado con éxito.")
         st.rerun()
     except Exception as e:
-        st.sidebar.error(f"Error de compatibilidad en el respaldo universal: {e}")
+        st.sidebar.error(f"Archivo JSON no compatible. Detalle: {e}")
 
-# Botón de Cierre de Sesión Completo
 st.sidebar.markdown("---")
 if st.sidebar.button("🔒 Cerrar Sesión y Limpiar Todo", type="secondary", use_container_width=True):
     for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
     st.rerun()
 
 # ==============================================================================
-# 5. MÓDULO A: DASHBOARD GENERAL
+# 5. MÓDULO A: DASHBOARD GENERAL (CORREGIDO Y BLINDADO)
 # ==============================================================================
 if modulo_activo == "📊 Dashboard General":
     st.markdown('<div class="section-header">📊 Resumen General de Operaciones</div>', unsafe_allow_html=True)
@@ -144,10 +132,9 @@ if modulo_activo == "📊 Dashboard General":
         fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Bienvenido a TaxFlow-Diamond. Ve a la pestaña 'Conciliación Bancaria' en la barra lateral para indexar tus papeles de trabajo o arrastra un archivo .JSON de respaldo.")
-
+        st.info("Bienvenido a TaxFlow-Diamond. Ve a la pestaña 'Conciliación Bancaria' en la barra lateral para comenzar.")
 # ==============================================================================
-# 6. MÓDULO B: PÁGINA EXCLUSIVA DE CONCILIACIÓN
+# 6. MÓDULO B: PÁGINA EXCLUSIVA DE CONCILIACIÓN CON RESPALDOS
 # ==============================================================================
 else:
     st.markdown('<div class="section-header">🏦 Conciliación Bancaria: Estado de Cuenta vs Auxiliar Contable</div>', unsafe_allow_html=True)
@@ -163,7 +150,7 @@ else:
                 st.session_state.df_auxiliar = leer_archivo_contable(auxiliar_file)
                 st.session_state.archivos_cargados = True
                 st.rerun()
-            except Exception as e: st.error(f"Error Operacional: {e}")
+            except Exception as e: st.error(f"Error: {e}")
     else:
         st.success("🏁 Tablas financieras indexadas y retenidas en la sesión contable.")
         if st.button("🔄 Cambiar / Subir nuevos archivos contables", type="secondary"):
@@ -194,8 +181,8 @@ else:
                 df_cruce_monto = pd.merge_asof(df_b_sorted, df_a_sorted, on='Monto_Limpio', tolerance=tolerancia, direction='nearest', suffixes=('_Banco', '_Auxiliar')).dropna(subset=[col_monto_auxiliar])
                 
                 st.session_state.df_conciliados = df_cruce_monto[df_cruce_monto['Fecha_Limpia_Banco'] == df_cruce_monto['Fecha_Limpia_Auxiliar']]
-                st.session_state.bancos_pendientes = df_b_clean[~df_b_clean['Monto_Limplio' if 'Monto_Limplio' in df_b_clean.columns else 'Monto_Limpio'].isin(st.session_state.df_conciliados['Monto_Limplio'] if 'Monto_Limplio' in st.session_state.df_conciliados.columns else st.session_state.df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
-                st.session_state.auxiliar_pendientes = df_a_clean[~df_a_clean['Monto_Limplio' if 'Monto_Limplio' in df_a_clean.columns else 'Monto_Limpio'].isin(st.session_state.df_conciliados['Monto_Limplio'] if 'Monto_Limplio' in st.session_state.df_conciliados.columns else st.session_state.df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
+                st.session_state.bancos_pendientes = df_b_clean[~df_b_clean['Monto_Limpio'].isin(st.session_state.df_conciliados['Monto_Limplio'] if 'Monto_Limplio' in st.session_state.df_conciliados.columns else st.session_state.df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
+                st.session_state.auxiliar_pendientes = df_a_clean[~df_a_clean['Monto_Limpio'].isin(st.session_state.df_conciliados['Monto_Limplio'] if 'Monto_Limplio' in st.session_state.df_conciliados.columns else st.session_state.df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
                 st.session_state.df_conciliados = st.session_state.df_conciliados.drop(columns=['Monto_Limpio', 'Fecha_Limpia_Banco', 'Fecha_Limpia_Auxiliar'], errors='ignore')
                 
                 st.session_state.suma_conciliado = st.session_state.df_conciliados[col_monto_banco].astype(float).abs().sum()
@@ -203,18 +190,24 @@ else:
                 st.session_state.suma_aux_p = st.session_state.auxiliar_pendientes[col_monto_auxiliar].astype(float).abs().sum()
                 st.session_state.ejecutado = True
                 st.rerun()
-            except Exception as e: st.error(f"Error Estructural en Mapeo: {e}")
+            except Exception as e: st.error(f"Error: {e}")
 
+        # Sección de descarga y tablas con indentación estructurada corregida
         if st.session_state.ejecutado:
             st.markdown('<div class="section-header">📊 Visualización de Datos Resguardados</div>', unsafe_allow_html=True)
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                st.session_state.df_conciliados.to_excel(writer, sheet_name='Partidas_Conciliadas', index=False)
-st.session_state.bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
-st.session_state.auxiliar_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
-st.download_button(label="📥 Descargar Libro de Conciliación Bancaria (.XLSX)", data=buffer.getvalue(), file_name=f"Conciliacion_Libros_{st.session_state.empresa if st.session_state.empresa else 'TaxFlow'}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-st.write("")
-tab1, tab2, tab3 = st.tabs(["✅ Partidas Conciliadas", "⚠️ Movimientos Solo en Banco", "📖 Movimientos Solo en Auxiliar"])
-with tab1: st.dataframe(st.session_state.df_conciliados, use_container_width=True)
-with tab2: st.dataframe(st.session_state.bancos_pendientes, use_container_width=True)
-with tab3: st.dataframe(st.session_state.auxiliar_pendientes, use_container_width=True)
+                if st.session_state.df_conciliados is not None:
+                    st.session_state.df_conciliados.to_excel(writer, sheet_name='Partidas_Conciliadas', index=False)
+                if st.session_state.bancos_pendientes is not None:
+                    st.session_state.bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
+                if st.session_state.auxiliar_pendientes is not None:
+                    st.session_state.auxiliar_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
+            
+            st.download_button(label="📥 Descargar Libro de Conciliación Bancaria (.XLSX)", data=buffer.getvalue(), file_name=f"Conciliacion_Libros_{st.session_state.empresa if st.session_state.empresa else 'TaxFlow'}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+            
+            st.write("")
+            tab1, tab2, tab3 = st.tabs(["✅ Partidas Conciliadas", "⚠️ Movimientos Solo en Banco", "📖 Movimientos Solo en Auxiliar"])
+            with tab1: st.dataframe(st.session_state.df_conciliados, use_container_width=True)
+            with tab2: st.dataframe(st.session_state.bancos_pendientes, use_container_width=True)
+            with tab3: st.dataframe(st.session_state.auxiliar_pendientes, use_container_width=True)
