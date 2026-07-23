@@ -94,7 +94,7 @@ if modulo_activo == "📊 Dashboard General":
     st.info("Bienvenido a TaxFlow-Diamond. Selecciona la pestaña 'Conciliación Bancaria Avanzada' en la barra lateral izquierda para comenzar a cruzar tus estados financieros por Monto y Fecha.")
 
 # ==============================================================================
-# 4. MÓDULO B: PÁGINA EXCLUSIVA DE CONCILIACIÓN (CORREGIDO PARA FORMATOS MIXTOS)
+# 4. MÓDULO B: PÁGINA EXCLUSIVA DE CONCILIACIÓN (BLINDADA CONTRA NULOS)
 # ==============================================================================
 else:
     st.markdown('<div class="section-header">🏦 Sección Exclusiva: Conciliación Bancaria Cruzada</div>', unsafe_allow_html=True)
@@ -129,18 +129,28 @@ else:
                 with c4: col_fecha_factura = st.selectbox("Fecha en XML/FACTURAS:", df_facturas.columns)
                 
                 if st.button("🚀 Ejecutar Conciliación Exacta (Monto + Fecha)", type="primary", use_container_width=True):
-                    # Ingeniería de variables: Homologación numérica
-                    df_banco['Monto_Limpio'] = df_banco[col_monto_banco].astype(float).abs()
-                    df_facturas['Monto_Limpio'] = df_facturas[col_monto_factura].astype(float).abs()
                     
-                    # CORRECCIÓN DEFINITIVA: Conversión inteligente de fechas (soporta DD/MM/AAAA y formatos mixtos)
+                    # BLINDAJE CORPORATIVO: Depuración absoluta de filas vacías (nulas) en las columnas clave mapeadas
+                    df_banco = df_banco.dropna(subset=[col_monto_banco, col_fecha_banco])
+                    df_facturas = df_facturas.dropna(subset=[col_monto_factura, col_fecha_factura])
+                    
+                    # Ingeniería de variables: Homologación numérica a flotantes absolutos
+                    df_banco['Monto_Limpio'] = pd.to_numeric(df_banco[col_monto_banco], errors='coerce').fillna(0).abs()
+                    df_facturas['Monto_Limpio'] = pd.to_numeric(df_facturas[col_monto_factura], errors='coerce').fillna(0).abs()
+                    
+                    # Eliminar ceros residuales generados por errores de texto en celdas numéricas
+                    df_banco = df_banco[df_banco['Monto_Limpio'] > 0]
+                    df_facturas = df_facturas[df_facturas['Monto_Limpio'] > 0]
+                    
+                    # Conversión inteligente de fechas
                     df_banco['Fecha_Limpia'] = pd.to_datetime(df_banco[col_fecha_banco], format='mixed', dayfirst=True).dt.date
                     df_facturas['Fecha_Limpia'] = pd.to_datetime(df_facturas[col_fecha_factura], format='mixed', dayfirst=True).dt.date
                     
-                    # ALGORITMO DE CRUCE POR DOBLE CRITERIO
-                    df_banco_sorted = df_banco.sort_values('Monto_Limpio')
-                    df_facturas_sorted = df_facturas.sort_values('Monto_Limpio')
+                    # Re-ordenamiento secuencial obligatorio para la función merge_asof de pandas
+                    df_banco_sorted = df_banco.sort_values('Monto_Limpio').reset_index(drop=True)
+                    df_facturas_sorted = df_facturas.sort_values('Monto_Limpio').reset_index(drop=True)
                     
+                    # Ejecución del Algoritmo de Cruce por Proximidad Monetaria
                     df_cruce_monto = pd.merge_asof(
                         df_banco_sorted,
                         df_facturas_sorted,
@@ -150,21 +160,21 @@ else:
                         suffixes=('_Banco', '_Factura')
                     ).dropna(subset=[col_monto_factura])
                     
-                    # Filtrado de validación estricta por fecha limpia
+                    # Filtrado de validación estricta por coincidencia exacta de fecha cronológica
                     df_conciliados = df_cruce_monto[df_cruce_monto['Fecha_Limpia_Banco'] == df_cruce_monto['Fecha_Limpia_Factura']]
                     
-                    # Identificación analítica de registros pendientes
+                    # Aislamiento analítico de inconsistencias y discrepancias (Saldos Huérfanos)
                     bancos_pendientes = df_banco[~df_banco['Monto_Limpio'].isin(df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
                     facturas_pendientes = df_facturas[~df_facturas['Monto_Limpio'].isin(df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
                     
                     df_conciliados = df_conciliados.drop(columns=['Monto_Limpio', 'Fecha_Limpia_Banco', 'Fecha_Limpia_Factura'], errors='ignore')
                     
-                    # Cálculos para Tablero Ejecutivo
+                    # Métricas de control financiero para el CFO Panel
                     suma_conciliado = df_conciliados[col_monto_banco].astype(float).abs().sum()
                     suma_banco_p = bancos_pendientes[col_monto_banco].astype(float).abs().sum()
                     suma_fact_p = facturas_pendientes[col_monto_factura].astype(float).abs().sum()
                     
-                    # Presentación de resultados
+                    # Presentación del Tablero Ejecutivo de Auditoría
                     st.markdown('<div class="section-header">📊 Dashboard de Auditoría Analítica</div>', unsafe_allow_html=True)
                     if empresa: st.info(f"📋 **Papel de Trabajo:** {empresa} | **Periodo:** {periodo} | **Auditor:** {auditor}")
                     
@@ -173,6 +183,7 @@ else:
                     m2.metric("Discrepancia en Banco", f"${suma_banco_p:,.2f}", "⚠️ Sin Factura", delta_color="inverse")
                     m3.metric("Discrepancia en XML", f"${suma_fact_p:,.2f}", "⚠️ Sin Flujo", delta_color="inverse")
                     
+                    # Despliegue de analítica visual interactiva (Gráfico de Pastel)
                     df_grafico = pd.DataFrame({
                         "Categoría": ["Capital Conciliado", "Pendiente Banco", "Pendiente XML"],
                         "Monto ($)": [suma_conciliado, suma_banco_p, suma_fact_p]
@@ -181,7 +192,7 @@ else:
                     fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # Centro de Exportación Multi-Pestaña
+                    # Centro de Descarga de Libros Contables (.XLSX Organizacional)
                     st.markdown('<div class="section-header">💾 Centro de Exportación de Datos</div>', unsafe_allow_html=True)
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -204,6 +215,7 @@ else:
                     with tab3: st.dataframe(facturas_pendientes, use_container_width=True)
                     
         except Exception as e:
-            st.error(f"Error Estructural: No se pudo procesar la fecha. Valida el mapeo de columnas. Detalle: {e}")
+            st.error(f"Error Estructural Crítico en Procesamiento Contable.")
+            st.info(f"Detalle técnico de depuración: {e}. Comprueba que las columnas seleccionadas correspondan fielmente a importes monetarios y fechas legibles.")
     else:
         st.info("💎 Módulo exclusivo de Conciliación Bancaria activo. Sube tus registros en la parte superior para mapear Importes y Fechas simultáneamente.")
