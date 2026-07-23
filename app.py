@@ -35,7 +35,7 @@ st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Sui
 st.sidebar.markdown("### 🗺️ Módulos del Sistema")
 modulo_activo = st.sidebar.radio(
     "Selecciona la herramienta a operar:",
-    ["📊 Dashboard General", "🏦 Conciliación Bancaria Avanzada (Monto + Fecha)"]
+    ["📊 Dashboard General", "🏦 Conciliación Bancaria (Estado de Cuenta vs Auxiliar Contable)"]
 )
 
 st.sidebar.markdown("---")
@@ -46,176 +46,140 @@ auditor = st.sidebar.text_input("Auditor Encargado:", placeholder="Ej. Lic. Juan
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ⚙️ Parámetros de Precisión")
-tolerancia = st.sidebar.slider("Margen de Tolerancia de Centavos:", 0.00, 5.00, 0.50, step=0.10)
+tolerancia = st.sidebar.slider("Margen de Tolerancia de Centavos:", 0.00, 5.00, 0.50, step=0.10, help="Ignora diferencias menores por redondeo decimal.")
 
 # Funciones globales de extracción e ingeniería de datos en memoria
-def leer_banco_o_factura(file):
+def leer_archivo_contable(file):
     if file.name.endswith('.csv'):
         return pd.read_csv(file)
     return pd.read_excel(file)
-
-def procesar_zip_xml(zip_file):
-    lista_xml = []
-    with zipfile.ZipFile(zip_file) as archive:
-        for file_name in archive.namelist():
-            if file_name.endswith('.xml'):
-                try:
-                    xml_data = archive.read(file_name)
-                    root = ET.fromstring(xml_data)
-                    for elem in root.iter():
-                        if '}' in elem.tag:
-                            elem.tag = elem.tag.split('}', 1)
-                    total = root.get('Total') or root.get('total')
-                    fecha = root.get('Fecha') or root.get('fecha')
-                    receptor_node = root.find('Receptor')
-                    emisor_node = root.find('Emisor')
-                    timbre_node = root.find('.//TimbreFiscalDigital')
-                    
-                    rfc_cliente = receptor_node.get('Rfc') if receptor_node is not None else "N/A"
-                    nombre_emisor = emisor_node.get('Nombre') if emisor_node is not None else "N/A"
-                    uuid = timbre_node.get('UUID') if timbre_node is not None else "N/A"
-                    
-                    if total and fecha:
-                        lista_xml.append({
-                            "UUID_Fiscal": uuid,
-                            "Fecha_Factura": fecha[:10],
-                            "RFC_Asociado": rfc_cliente,
-                            "Emisor": nombre_emisor,
-                            "Monto_XML": float(total)
-                        })
-                except Exception:
-                    pass
-    return pd.DataFrame(lista_xml)
 # ==============================================================================
 # 3. MÓDULO A: DASHBOARD GENERAL
 # ==============================================================================
 if modulo_activo == "📊 Dashboard General":
     st.markdown('<div class="section-header">📊 Resumen General de Operaciones</div>', unsafe_allow_html=True)
-    st.info("Bienvenido a TaxFlow-Diamond. Selecciona la pestaña 'Conciliación Bancaria Avanzada' en la barra lateral izquierda para comenzar a cruzar tus estados financieros por Monto y Fecha.")
+    st.info("Bienvenido a TaxFlow-Diamond. Selecciona la pestaña 'Conciliación Bancaria' en la barra lateral izquierda para comenzar a cruzar tu Estado de Cuenta contra el Auxiliar de Contabilidad.")
 
 # ==============================================================================
-# 4. MÓDULO B: PÁGINA EXCLUSIVA DE CONCILIACIÓN (BLINDADA CONTRA NULOS)
+# 4. MÓDULO B: PÁGINA EXCLUSIVA DE CONCILIACIÓN (BANCO VS AUXILIAR)
 # ==============================================================================
 else:
-    st.markdown('<div class="section-header">🏦 Sección Exclusiva: Conciliación Bancaria Cruzada</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🏦 Conciliación Bancaria: Estado de Cuenta vs Auxiliar Contable</div>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("1. Ingesta de Estado de Cuenta")
-        banco_file = st.file_uploader("Sube el archivo del Banco (CSV o Excel)", type=["csv", "xlsx"], key="banco_excl")
+        st.subheader("1. Estado de Cuenta Emitido por el Banco")
+        banco_file = st.file_uploader("Sube el archivo del Banco (Excel o CSV)", type=["csv", "xlsx"], key="banco_aux")
     with col2:
-        st.subheader("2. Ingesta de Facturas / XML Nativo")
-        origen_facturas = st.radio("Selecciona el formato de origen de las facturas:", ["Reporte en Excel / CSV", "Archivo Comprimido (.ZIP) con XMLs del SAT"], key="origen_excl")
-        if origen_facturas == "Reporte en Excel / CSV":
-            facturas_file = st.file_uploader("Sube el reporte estructurado de Facturas", type=["csv", "xlsx"], key="fact_excl")
-        else:
-            facturas_file = st.file_uploader("Sube el archivo comprimido con tus XML fiscales", type=["zip"], key="zip_excl")
+        st.subheader("2. Auxiliar de Contabilidad de Bancos (ERP/Sistema)")
+        auxiliar_file = st.file_uploader("Sube el Auxiliar Contable Interno (Excel o CSV)", type=["csv", "xlsx"], key="aux_cont")
 
-    if banco_file and facturas_file:
+    if banco_file and auxiliar_file:
         try:
-            df_banco = leer_banco_o_factura(banco_file)
-            df_facturas = leer_banco_o_factura(facturas_file) if origen_facturas == "Reporte en Excel / CSV" else procesar_zip_xml(facturas_file)
+            df_banco = leer_archivo_contable(banco_file)
+            df_auxiliar = leer_archivo_contable(auxiliar_file)
             
-            if len(df_banco) > 0 and len(df_facturas) > 0:
-                st.success("🏁 Registros contables e indexación fiscal cargados correctamente.")
+            if len(df_banco) > 0 and len(df_auxiliar) > 0:
+                st.success("🏁 Estado de cuenta bancario y Auxiliar contable indexados correctamente.")
                 
-                st.markdown('<div class="section-header">⚙️ Configuración del Mapeo Bidimensional</div>', unsafe_allow_html=True)
-                st.write("Selecciona los cuatro campos críticos para ejecutar la validación cruzada:")
+                st.markdown('<div class="section-header">⚙️ Configuración del Mapeo de Auditoría</div>', unsafe_allow_html=True)
+                st.write("Selecciona los campos de importe y fecha para validar de forma cruzada:")
                 
                 c1, c2, c3, c4 = st.columns(4)
-                with c1: col_monto_banco = st.selectbox("Monto en el BANCO:", df_banco.columns)
-                with c2: col_fecha_banco = st.selectbox("Fecha en el BANCO:", df_banco.columns)
-                with c3: col_monto_factura = st.selectbox("Monto en XML/FACTURAS:", df_facturas.columns)
-                with c4: col_fecha_factura = st.selectbox("Fecha en XML/FACTURAS:", df_facturas.columns)
+                with c1: col_monto_banco = st.selectbox("Columna de Monto (BANCO):", df_banco.columns)
+                with c2: col_fecha_banco = st.selectbox("Columna de Fecha (BANCO):", df_banco.columns)
+                with c3: col_monto_auxiliar = st.selectbox("Columna de Monto (AUXILIAR):", df_auxiliar.columns)
+                with c4: col_fecha_auxiliar = st.selectbox("Columna de Fecha (AUXILIAR):", df_auxiliar.columns)
                 
-                if st.button("🚀 Ejecutar Conciliación Exacta (Monto + Fecha)", type="primary", use_container_width=True):
+                if st.button("🚀 Ejecutar Conciliación de Libros Contables", type="primary", use_container_width=True):
                     
-                    # BLINDAJE CORPORATIVO: Depuración absoluta de filas vacías (nulas) en las columnas clave mapeadas
+                    # Depuración de filas nulas o vacías en columnas clave
                     df_banco = df_banco.dropna(subset=[col_monto_banco, col_fecha_banco])
-                    df_facturas = df_facturas.dropna(subset=[col_monto_factura, col_fecha_factura])
+                    df_auxiliar = df_auxiliar.dropna(subset=[col_monto_auxiliar, col_fecha_auxiliar])
                     
-                    # Ingeniería de variables: Homologación numérica a flotantes absolutos
+                    # Homologación a valores absolutos (así neutralizamos la inversión de Cargo/Abono)
                     df_banco['Monto_Limpio'] = pd.to_numeric(df_banco[col_monto_banco], errors='coerce').fillna(0).abs()
-                    df_facturas['Monto_Limpio'] = pd.to_numeric(df_facturas[col_monto_factura], errors='coerce').fillna(0).abs()
+                    df_auxiliar['Monto_Limpio'] = pd.to_numeric(df_auxiliar[col_monto_auxiliar], errors='coerce').fillna(0).abs()
                     
-                    # Eliminar ceros residuales generados por errores de texto en celdas numéricas
+                    # Eliminar registros en cero
                     df_banco = df_banco[df_banco['Monto_Limpio'] > 0]
-                    df_facturas = df_facturas[df_facturas['Monto_Limpio'] > 0]
+                    df_auxiliar = df_auxiliar[df_auxiliar['Monto_Limpio'] > 0]
                     
-                    # Conversión inteligente de fechas
+                    # Conversión homologada de formatos de fecha
                     df_banco['Fecha_Limpia'] = pd.to_datetime(df_banco[col_fecha_banco], format='mixed', dayfirst=True).dt.date
-                    df_facturas['Fecha_Limpia'] = pd.to_datetime(df_facturas[col_fecha_factura], format='mixed', dayfirst=True).dt.date
+                    df_auxiliar['Fecha_Limpia'] = pd.to_datetime(df_auxiliar[col_fecha_auxiliar], format='mixed', dayfirst=True).dt.date
                     
-                    # Re-ordenamiento secuencial obligatorio para la función merge_asof de pandas
+                    # Reordenamiento secuencial para algoritmo de aproximación
                     df_banco_sorted = df_banco.sort_values('Monto_Limpio').reset_index(drop=True)
-                    df_facturas_sorted = df_facturas.sort_values('Monto_Limpio').reset_index(drop=True)
+                    df_auxiliar_sorted = df_auxiliar.sort_values('Monto_Limpio').reset_index(drop=True)
                     
-                    # Ejecución del Algoritmo de Cruce por Proximidad Monetaria
+                    # Ejecución del cruce por proximidad numérica de importe
                     df_cruce_monto = pd.merge_asof(
                         df_banco_sorted,
-                        df_facturas_sorted,
+                        df_auxiliar_sorted,
                         on='Monto_Limpio',
                         tolerance=tolerancia,
                         direction='nearest',
-                        suffixes=('_Banco', '_Factura')
-                    ).dropna(subset=[col_monto_factura])
+                        suffixes=('_Banco', '_Auxiliar')
+                    ).dropna(subset=[col_monto_auxiliar])
                     
-                    # Filtrado de validación estricta por coincidencia exacta de fecha cronológica
-                    df_conciliados = df_cruce_monto[df_cruce_monto['Fecha_Limpia_Banco'] == df_cruce_monto['Fecha_Limpia_Factura']]
+                    # Validación contable rigurosa por empate de fecha exacta
+                    df_conciliados = df_cruce_monto[df_cruce_monto['Fecha_Limpia_Banco'] == df_cruce_monto['Fecha_Limpia_Auxiliar']]
                     
-                    # Aislamiento analítico de inconsistencias y discrepancias (Saldos Huérfanos)
+                    # Detección analítica de partidas pendientes de conciliar
                     bancos_pendientes = df_banco[~df_banco['Monto_Limpio'].isin(df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
-                    facturas_pendientes = df_facturas[~df_facturas['Monto_Limpio'].isin(df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
+                    auxiliar_pendientes = df_auxiliar[~df_auxiliar['Monto_Limpio'].isin(df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
                     
-                    df_conciliados = df_conciliados.drop(columns=['Monto_Limpio', 'Fecha_Limpia_Banco', 'Fecha_Limpia_Factura'], errors='ignore')
+                    df_conciliados = df_conciliados.drop(columns=['Monto_Limpio', 'Fecha_Linter_Banco', 'Fecha_Limpia_Banco', 'Fecha_Limpia_Auxiliar'], errors='ignore')
                     
-                    # Métricas de control financiero para el CFO Panel
+                    # Totales financieros
                     suma_conciliado = df_conciliados[col_monto_banco].astype(float).abs().sum()
                     suma_banco_p = bancos_pendientes[col_monto_banco].astype(float).abs().sum()
-                    suma_fact_p = facturas_pendientes[col_monto_factura].astype(float).abs().sum()
+                    suma_aux_p = auxiliar_pendientes[col_monto_auxiliar].astype(float).abs().sum()
                     
-                    # Presentación del Tablero Ejecutivo de Auditoría
-                    st.markdown('<div class="section-header">📊 Dashboard de Auditoría Analítica</div>', unsafe_allow_html=True)
-                    if empresa: st.info(f"📋 **Papel de Trabajo:** {empresa} | **Periodo:** {periodo} | **Auditor:** {auditor}")
+                    # Despliegue del Dashboard Corporativo de Auditoría
+                    st.markdown('<div class="section-header">📊 Resumen Ejecutivo del Papel de Trabajo</div>', unsafe_allow_html=True)
+                    if empresa: st.info(f"📋 **Papel de Trabajo Contable:** {empresa} | **Periodo:** {periodo} | **Auditor:** {auditor}")
                     
                     m1, m2, m3 = st.columns(3)
-                    m1.metric("Capital Conciliado (Monto + Fecha)", f"${suma_conciliado:,.2f}", "✓ Cuadrado")
-                    m2.metric("Discrepancia en Banco", f"${suma_banco_p:,.2f}", "⚠️ Sin Factura", delta_color="inverse")
-                    m3.metric("Discrepancia en XML", f"${suma_fact_p:,.2f}", "⚠️ Sin Flujo", delta_color="inverse")
+                    m1.metric("Importe Conciliado (Alineado)", f"${suma_conciliado:,.2f}", "✓ Correcto")
+                    m2.metric("Pendientes en Banco", f"${suma_banco_p:,.2f}", "⚠️ Mov. No Contabilizados", delta_color="inverse")
+                    m3.metric("Pendientes en Auxiliar", f"${suma_aux_p:,.2f}", "⚠️ Tránsitos / No Bancarizados", delta_color="inverse")
                     
-                    # Despliegue de analítica visual interactiva (Gráfico de Pastel)
+                    # Gráfica analítica de distribución de saldos
                     df_grafico = pd.DataFrame({
-                        "Categoría": ["Capital Conciliado", "Pendiente Banco", "Pendiente XML"],
-                        "Monto ($)": [suma_conciliado, suma_banco_p, suma_fact_p]
+                        "Concepto": ["Saldos Conciliados", "Partidas Pendientes Banco", "Partidas Pendientes Auxiliar"],
+                        "Importe ($)": [suma_conciliado, suma_banco_p, suma_aux_p]
                     })
-                    fig = px.pie(df_grafico, values="Monto ($)", names="Categoría", color_discrete_sequence=["#00D4FF", "#FF4B4B", "#FFA500"], hole=0.4)
+                    fig = px.pie(df_grafico, values="Importe ($)", names="Concepto", color_discrete_sequence=["#00D4FF", "#FF4B4B", "#FFA500"], hole=0.4)
                     fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # Centro de Descarga de Libros Contables (.XLSX Organizacional)
-                    st.markdown('<div class="section-header">💾 Centro de Exportación de Datos</div>', unsafe_allow_html=True)
+                    # Centro de Exportación a Libro de Excel Conciliado
+                    st.markdown('<div class="section-header">💾 Centro de Exportación de Papeles de Trabajo</div>', unsafe_allow_html=True)
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        df_conciliados.to_excel(writer, sheet_name='Conciliados', index=False)
-                        bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Banco', index=False)
-                        facturas_pendientes.to_excel(writer, sheet_name='Pendientes_XML', index=False)
+                        df_conciliados.to_excel(writer, sheet_name='Partidas_Conciliadas', index=False)
+                        bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
+                        auxiliar_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
                     
                     st.download_button(
-                        label="📥 Descargar Reporte Completo en Excel (.XLSX)",
+                        label="📥 Descargar Libro de Conciliación Bancaria Completo (.XLSX)",
                         data=buffer.getvalue(),
-                        file_name=f"Conciliacion_Bidimensional_{empresa if empresa else 'TaxFlow'}.xlsx",
+                        file_name=f"Conciliacion_Bancaria_Libros_{empresa if empresa else 'TaxFlow'}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
                     
+                    # Desglose de registros técnicos en pestañas
                     st.write("")
-                    tab1, tab2, tab3 = st.tabs(["✅ Conciliados Rigurosos", "⚠️ Pendientes Banco", "📄 XMLs Huérfanos"])
+                    tab1, tab2, tab3 = st.tabs(["✅ Partidas Conciliadas", "⚠️ Movimientos Solo en Banco", "📖 Movimientos Solo en Auxiliar"])
                     with tab1: st.dataframe(df_conciliados, use_container_width=True)
                     with tab2: st.dataframe(bancos_pendientes, use_container_width=True)
-                    with tab3: st.dataframe(facturas_pendientes, use_container_width=True)
+                    with tab3: st.dataframe(auxiliar_pendientes, use_container_width=True)
                     
         except Exception as e:
-            st.error(f"Error Estructural Crítico en Procesamiento Contable.")
-            st.info(f"Detalle técnico de depuración: {e}. Comprueba que las columnas seleccionadas correspondan fielmente a importes monetarios y fechas legibles.")
+            st.error(f"Error Estructural: Asegúrate de mapear correctamente las columnas de importe y fecha de tus papeles de trabajo.")
+            st.info(f"Detalle técnico de auditoría: {e}")
     else:
-        st.info("💎 Módulo exclusivo de Conciliación Bancaria activo. Sube tus registros en la parte superior para mapear Importes y Fechas simultáneamente.")
+        st.info("💎 Módulo de Conciliación Bancaria Formal activo. Por favor, sube el Estado de Cuenta del Banco y tu reporte de Auxiliar Contable Interno para iniciar el cruce de libros.")
