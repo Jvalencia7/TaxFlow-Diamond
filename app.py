@@ -35,7 +35,8 @@ variables_sesion = {
     'df_banco': None, 'df_auxiliar': None, 'archivos_cargados': False,
     'df_conciliados': None, 'bancos_pendientes': None, 'auxiliar_pendientes': None,
     'suma_conciliado': 0.0, 'suma_banco_p': 0.0, 'suma_aux_p': 0.0, 'ejecutado': False,
-    'empresa': "", 'periodo': "", 'auditor': ""
+    'empresa': "", 'periodo': "", 'auditor': "",
+    'tolerancia': 0.50, 'divisa': "MXN ($)"
 }
 
 for llave, valor_defecto in variables_sesion.items():
@@ -43,29 +44,36 @@ for llave, valor_defecto in variables_sesion.items():
         st.session_state[llave] = valor_defecto
 
 # ==============================================================================
-# 3. PANEL DE CONTROL (BARRA LATERAL) Y NAVEGACIÓN
+# 3. NAVEGACIÓN EN LA PARTE SUPERIOR (PESTAÑAS CENTRALES)
 # ==============================================================================
-st.sidebar.markdown("### 🗺️ Módulos del Sistema")
-modulo_activo = st.sidebar.radio(
-    "Selecciona la herramienta a operar:",
-    ["📊 Dashboard General", "🏦 Conciliación Bancaria (Estado de Cuenta vs Auxiliar Contable)"]
-)
+st.markdown('<div class="section-header">🗺️ Módulos de la Suite</div>', unsafe_allow_html=True)
+tab_dashboard, tab_conciliacion, tab_configuracion = st.tabs([
+    "📊 Dashboard General de Operaciones", 
+    "🏦 Módulo Especializado de Conciliación Bancaria",
+    "⚙️ Configuración del Sistema"
+])
+
+# ==============================================================================
+# 4. BARRA LATERAL OPTIMIZADA: CARGADOR DE LOGO Y BUSCADOR DE ALTA FRECUENCIA
+# ==============================================================================
+st.sidebar.markdown("### 🖼️ Identidad Corporativa")
+# Cargador dinámico para que subas el logotipo de tu marca desde la interfaz
+logo_file = st.sidebar.file_uploader("Sube el logotipo de tu Empresa/Despacho", type=["png", "jpg", "jpeg", "webp"], key="logo_uploader")
+if logo_file is not None:
+    st.sidebar.image(logo_file, use_container_width=True)
+else:
+    st.sidebar.info("💡 Arrastra aquí un logo corporativo (PNG/JPG) para personalizar la suite.")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🏢 Membrete de Auditoría")
-st.session_state.empresa = st.sidebar.text_input("Razón Social del Cliente:", value=st.session_state.empresa, placeholder="Ej. Empresa SA de CV")
-st.session_state.periodo = st.sidebar.text_input("Periodo Fiscal:", value=st.session_state.periodo, placeholder="Ej. Enero 2026")
-st.session_state.auditor = st.sidebar.text_input("Auditor Encargado:", value=st.session_state.auditor, placeholder="Ej. Lic. Juan Pérez")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### ⚙️ Parámetros de Precisión")
-tolerancia = st.sidebar.slider("Margen de Tolerancia de Centavos:", 0.00, 5.00, 0.50, step=0.10)
+st.sidebar.markdown("### 🔍 Rastreador Rápido de Auditoría")
+# Herramienta de alta frecuencia para buscar importes o textos sospechosos al instante
+busqueda_rapida = st.sidebar.text_input("Ingresa monto o texto a rastrear:", placeholder="Ej. 15400.50 o Transferencia")
 
 def leer_archivo_contable(file):
     if file.name.endswith('.csv'): return pd.read_csv(file)
     return pd.read_excel(file)
 # ==============================================================================
-# 4. MOTOR DE RESPALDO UNIVERSAL AUTOMÁTICO (.JSON AUTOMÁTICO DE SECCIONES)
+# 5. MOTOR DE RESPALDO UNIVERSAL AUTOMÁTICO (.JSON EN BARRA LATERAL)
 # ==============================================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 💾 Copias de Seguridad (.JSON)")
@@ -88,7 +96,7 @@ if st.session_state.ejecutado:
         use_container_width=True
     )
 else:
-    st.sidebar.info("💡 Ejecuta una conciliación primero para habilitar la descarga del respaldo JSON.")
+    st.sidebar.info("💡 Ejecuta una conciliación primero para habilitar el respaldo JSON.")
 
 archivo_json_cargado = st.sidebar.file_uploader("📂 Cargar Auditoría (.JSON)", type=["json"], key="json_uploader")
 
@@ -103,7 +111,7 @@ if archivo_json_cargado is not None:
         st.sidebar.success("✓ Respaldo cargado con éxito.")
         st.rerun()
     except Exception as e:
-        st.sidebar.error(f"Archivo JSON no compatible. Detalle: {e}")
+        st.sidebar.error(f"Archivo JSON no compatible: {e}")
 
 st.sidebar.markdown("---")
 if st.sidebar.button("🔒 Cerrar Sesión y Limpiar Todo", type="secondary", use_container_width=True):
@@ -111,33 +119,77 @@ if st.sidebar.button("🔒 Cerrar Sesión y Limpiar Todo", type="secondary", use
     st.rerun()
 
 # ==============================================================================
-# 5. MÓDULO A: DASHBOARD GENERAL (CORREGIDO Y BLINDADO)
+# 6. DESPLIEGUE: PESTAÑA CONFIGURACIÓN DEL SISTEMA
 # ==============================================================================
-if modulo_activo == "📊 Dashboard General":
-    st.markdown('<div class="section-header">📊 Resumen General de Operaciones</div>', unsafe_allow_html=True)
+with tab_configuracion:
+    st.write("")
+    st.markdown('<div class="section-header">⚙️ Panel de Parámetros Globales y Membretes</div>', unsafe_allow_html=True)
     
-    if st.session_state.ejecutado:
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1: st.session_state.empresa = st.text_input("Razón Social del Cliente:", value=st.session_state.empresa)
+    with col_m2: st.session_state.periodo = st.text_input("Periodo Fiscal:", value=st.session_state.periodo)
+    with col_m3: st.session_state.auditor = st.text_input("Auditor Encargado:", value=st.session_state.auditor)
+    
+    st.markdown("---")
+    col_conf1, col_conf2 = st.columns(2)
+    with col_conf1:
+        st.session_state.tolerancia = st.slider("Margen de Tolerancia de Centavos:", 0.00, 5.00, value=float(st.session_state.tolerancia), step=0.10)
+    with col_conf2:
+        lista_divisas = ["MXN ($)", "USD ($)", "EUR (€)", "CLP ($)", "COP ($)"]
+        indice_defecto = lista_divisas.index(st.session_state.divisa) if st.session_state.divisa in lista_divisas else 0
+        st.session_state.divisa = st.selectbox("Divisa de Presentación de Reportes:", lista_divisas, index=indice_defecto)
+    st.success("⚙️ Configuraciones almacenadas correctamente en la sesión.")
+
+# ==============================================================================
+# 7. DESPLIEGUE: PESTAÑA DASHBOARD GENERAL
+# ==============================================================================
+with tab_dashboard:
+    st.write("")
+    
+    # SI EL USUARIO ESCRIBE ALGO EN EL RASTREADOR RÁPIDO DE LA BARRA LATERAL
+    if busqueda_rapida and st.session_state.ejecutado:
+        st.markdown('<div class="section-header">🎯 Resultados del Rastreador de Auditoría</div>', unsafe_allow_html=True)
+        st.write(f"Filtrando registros que contengan el valor: **{busqueda_rapida}**")
+        
+        # Función interna para buscar coincidencias de texto/número en el dataframe
+        def filtrar_por_texto(df, termino):
+            if df is None: return None
+            mascara = df.astype(str).apply(lambda x: x.str.contains(termino, case=False, na=False)).any(axis=1)
+            return df[mascara]
+        
+        res_conc = filtrar_por_texto(st.session_state.df_conciliados, busqueda_rapida)
+        res_banc = filtrar_por_texto(st.session_state.bancos_pendientes, busqueda_rapida)
+        res_auxl = filtrar_por_texto(st.session_state.auxiliar_pendientes, busqueda_rapida)
+        
+        c_tab1, c_tab2, c_tab3 = st.tabs(["✅ Conciliados Encontrados", "⚠️ En Banco Encontrados", "📖 En Auxiliar Encontrados"])
+        with c_tab1: st.dataframe(res_conc, use_container_width=True) if res_conc is not None and len(res_conc) > 0 else st.info("Sin registros coincidentes en Conciliados.")
+        with c_tab2: st.dataframe(res_banc, use_container_width=True) if res_banc is not None and len(res_banc) > 0 else st.info("Sin registros coincidentes en Pendientes Banco.")
+        with c_tab3: st.dataframe(res_auxl, use_container_width=True) if res_auxl is not None and len(res_auxl) > 0 else st.info("Sin registros coincidentes en Pendientes Auxiliar.")
+    
+    # SINO, MUESTRA EL DASHBOARD GENERAL HABITUAL
+    elif st.session_state.ejecutado:
         st.success(f"💾 Información retenida en memoria activa para: {st.session_state.empresa if st.session_state.empresa else 'Cliente Genérico'}")
+        simbolo = st.session_state.divisa.split(" ")[1].replace("(", "").replace(")", "")
         
         m1, m2, m3 = st.columns(3)
-        m1.metric("Capital Conciliado", f"${st.session_state.suma_conciliado:,.2f}", "✓ Resguardado")
-        m2.metric("Pendientes en Banco", f"${st.session_state.suma_banco_p:,.2f}", "⚠️ Alerta", delta_color="inverse")
-        m3.metric("Pendientes en Auxiliar", f"${st.session_state.suma_aux_p:,.2f}", "⚠️ Alerta", delta_color="inverse")
+        m1.metric("Capital Conciliado", f"{simbolo} {st.session_state.suma_conciliado:,.2f}", "✓ Resguardado")
+        m2.metric("Pendientes en Banco", f"{simbolo} {st.session_state.suma_banco_p:,.2f}", "⚠️ Alerta", delta_color="inverse")
+        m3.metric("Pendientes en Auxiliar", f"{simbolo} {st.session_state.suma_aux_p:,.2f}", "⚠️ Alerta", delta_color="inverse")
         
         df_grafico = pd.DataFrame({
             "Concepto": ["Saldos Conciliados", "Partidas Pendientes Banco", "Partidas Pendientes Auxiliar"],
-            "Importe ($)": [st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p]
+            "Importe": [st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p]
         })
-        fig = px.pie(df_grafico, values="Importe ($)", names="Concepto", color_discrete_sequence=["#00D4FF", "#FF4B4B", "#FFA500"], hole=0.4)
+        fig = px.pie(df_grafico, values="Importe", names="Concepto", color_discrete_sequence=["#00D4FF", "#FF4B4B", "#FFA500"], hole=0.4)
         fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Bienvenido a TaxFlow-Diamond. Ve a la pestaña 'Conciliación Bancaria' en la barra lateral para comenzar.")
+        st.info("Bienvenido a TaxFlow-Diamond. Sube tus papeles de trabajo contables en la pestaña superior para comenzar o arrastra un archivo de respaldo .JSON.")
 # ==============================================================================
-# 6. MÓDULO B: PÁGINA EXCLUSIVA DE CONCILIACIÓN CON RESPALDOS
+# 8. DESPLIEGUE: PESTAÑA CONCILIACIÓN BANCARIA
 # ==============================================================================
-else:
-    st.markdown('<div class="section-header">🏦 Conciliación Bancaria: Estado de Cuenta vs Auxiliar Contable</div>', unsafe_allow_html=True)
+with tab_conciliacion:
+    st.write("")
     
     if not st.session_state.archivos_cargados:
         col1, col2 = st.columns(2)
@@ -178,12 +230,12 @@ else:
                 df_a_clean['Fecha_Limpia'] = pd.to_datetime(df_a_clean[col_fecha_auxiliar], format='mixed', dayfirst=True).dt.date
                 
                 df_b_sorted, df_a_sorted = df_b_clean.sort_values('Monto_Limpio').reset_index(drop=True), df_a_clean.sort_values('Monto_Limpio').reset_index(drop=True)
-                df_cruce_monto = pd.merge_asof(df_b_sorted, df_a_sorted, on='Monto_Limpio', tolerance=tolerancia, direction='nearest', suffixes=('_Banco', '_Auxiliar')).dropna(subset=[col_monto_auxiliar])
+                df_cruce_monto = pd.merge_asof(df_b_sorted, df_a_sorted, on='Monto_Limpio', tolerance=st.session_state.tolerancia, direction='nearest', suffixes=('_Banco', '_Auxiliar')).dropna(subset=[col_monto_auxiliar])
                 
                 st.session_state.df_conciliados = df_cruce_monto[df_cruce_monto['Fecha_Limpia_Banco'] == df_cruce_monto['Fecha_Limpia_Auxiliar']]
                 st.session_state.bancos_pendientes = df_b_clean[~df_b_clean['Monto_Limpio'].isin(st.session_state.df_conciliados['Monto_Limplio'] if 'Monto_Limplio' in st.session_state.df_conciliados.columns else st.session_state.df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
                 st.session_state.auxiliar_pendientes = df_a_clean[~df_a_clean['Monto_Limpio'].isin(st.session_state.df_conciliados['Monto_Limplio'] if 'Monto_Limplio' in st.session_state.df_conciliados.columns else st.session_state.df_conciliados['Monto_Limpio'])].drop(columns=['Monto_Limpio', 'Fecha_Limpia'], errors='ignore')
-                st.session_state.df_conciliados = st.session_state.df_conciliados.drop(columns=['Monto_Limpio', 'Fecha_Limpia_Banco', 'Fecha_Limpia_Auxiliar'], errors='ignore')
+                st.session_state.df_conciliados = st.session_state.df_conciliados.drop(columns=['Monto_Limpio', 'Fecha_Linter_Banco', 'Fecha_Limpia_Banco', 'Fecha_Limpia_Auxiliar'], errors='ignore')
                 
                 st.session_state.suma_conciliado = st.session_state.df_conciliados[col_monto_banco].astype(float).abs().sum()
                 st.session_state.suma_banco_p = st.session_state.bancos_pendientes[col_monto_banco].astype(float).abs().sum()
@@ -192,7 +244,6 @@ else:
                 st.rerun()
             except Exception as e: st.error(f"Error: {e}")
 
-        # Sección de descarga y tablas con indentación estructurada corregida
         if st.session_state.ejecutado:
             st.markdown('<div class="section-header">📊 Visualización de Datos Resguardados</div>', unsafe_allow_html=True)
             buffer = io.BytesIO()
