@@ -56,6 +56,7 @@ variables_sesion = {
 
 for llave, valor_defecto in variables_sesion.items():
     if llave not in st.session_state: st.session_state[llave] = valor_defecto
+
 # ==============================================================================
 # 3. NAVEGACIÓN SUPERIOR INTEGRAL DE 10 PESTAÑAS CORPORATIVAS
 # ==============================================================================
@@ -128,7 +129,6 @@ with tab_dashboard:
         else: clase_semaforo, mensaje_semaforo = "kpi-red", "🔴 ALERTA - RIESGO ALTO: Desfase crítico."
         st.markdown(f"<div class='kpi-card {clase_semaforo}'>{mensaje_semaforo} ({porcentaje_riesgo:.2f}% desfase)</div>", unsafe_allow_html=True)
         
-        # TARGETAS SOLO CON IMPORTES EN FORMATO DE MONEDA SIN "MXN"
         m1, m2, m3 = st.columns(3)
         m1.metric("Capital Conciliado", f"$ {st.session_state.suma_conciliado:,.2f}")
         m2.metric("Pendientes Banco", f"$ {st.session_state.suma_banco_p:,.2f}", delta_color="inverse")
@@ -138,6 +138,9 @@ with tab_dashboard:
         st.download_button(label="📥 Descargar Dictamen Certificado (PDF)", data=pdf_dictamen, file_name="Dictamen_Auditoria.pdf", mime="application/pdf", use_container_width=True)
     else: st.info("💎 Suite Inicializada. Usa los módulos superiores para comenzar la auditoría.")
 
+# ==============================================================================
+# CONFIGURACIÓN COMPLETA RESTAURADA CON BOTONES DE RESPALDO JSON
+# ==============================================================================
 with tab_configuracion:
     st.write("")
     st.markdown('<div class="section-header">⚙️ Panel de Parámetros Globales y Membretes</div>', unsafe_allow_html=True)
@@ -145,17 +148,48 @@ with tab_configuracion:
     with col_m1: st.session_state.empresa = st.text_input("Razón Social del Cliente:", value=st.session_state.empresa)
     with col_m2: st.session_state.periodo = st.text_input("Periodo Fiscal:", value=st.session_state.periodo)
     with col_m3: st.session_state.auditor = st.text_input("Auditor Encargado:", value=st.session_state.auditor)
+    
     st.markdown("---")
     col_conf1, col_conf2 = st.columns(2)
     with col_conf1: st.session_state.tolerancia = st.slider("Tolerancia Centavos:", 0.00, 5.00, value=float(st.session_state.tolerancia), step=0.10)
     with col_conf2:
         lista_divisas = ["MXN ($)", "USD ($)", "EUR (€)"]
         st.session_state.divisa = st.selectbox("Divisa Base:", lista_divisas, index=lista_divisas.index(st.session_state.divisa) if st.session_state.divisa in lista_divisas else 0)
+    
     st.markdown("---")
     logo_file = st.file_uploader("Sube el logotipo (PNG, JPG)", type=["png", "jpg", "jpeg", "webp"], key="logo_config")
     if logo_file is not None:
         nuevos_bytes = logo_file.read()
         if st.session_state.logo_bytes != nuevos_bytes: st.session_state.logo_bytes = nuevos_bytes; st.session_state.fase_progreso = 2; st.rerun()
+
+    # RESTAURADOS AQUÍ LOS BOTONES DE RESPALDO JSON COMPLETOS
+    st.markdown("---")
+    st.subheader("💾 Copias de Seguridad de la Auditoría (.JSON)")
+    col_j1, col_j2 = st.columns(2)
+    with col_j1:
+        if st.session_state.bancos_ejecutado or st.session_state.xml_ejecutado or st.session_state.saldos_ejecutado:
+            respaldo_dinamico = {}
+            for llave in variables_sesion.keys():
+                valor = st.session_state[llave]
+                if isinstance(valor, pd.DataFrame): respaldo_dinamico[llave] = {"tipo": "dataframe", "datos": valor.to_json(orient='split')}
+                elif llave == 'logo_bytes' and valor is not None: respaldo_dinamico[llave] = {"tipo": "bytes", "datos": valor.hex()}
+                else: respaldo_dinamico[llave] = {"tipo": "nativo", "datos": valor}
+            st.download_button(label="📥 Descargar Respaldo JSON", data=json.dumps(respaldo_dinamico), file_name="Backup_TaxFlow.json", mime="application/json", use_container_width=True)
+        else:
+            st.info("💡 Ejecuta algún módulo de conciliación primero para poder descargar un respaldo .JSON")
+            
+    with col_j2:
+        archivo_json_cargado = st.file_uploader("Sube tu archivo de respaldo (.JSON)", type=["json"], key="json_config_uploader")
+        if archivo_json_cargado is not None:
+            try:
+                datos_restaurados = json.load(archivo_json_cargado)
+                for llave, paquete in datos_restaurados.items():
+                    if paquete["tipo"] == "dataframe" and paquete["datos"] is not None: st.session_state[llave] = pd.read_json(io.StringIO(paquete["datos"]), orient='split')
+                    elif paquete["tipo"] == "bytes" and paquete["datos"] is not None: st.session_state[llave] = bytes.fromhex(paquete["datos"])
+                    else: st.session_state[llave] = paquete["datos"]
+                st.success("✓ Ecosistema restaurado desde el JSON con éxito.")
+                st.rerun()
+            except Exception as e: st.error(f"Error JSON: {e}")
 with tab_bancos:
     st.write("")
     st.markdown('<div class="section-header">🏦 Módulo Bancario: Estado de Cuenta vs Auxiliar Contable Interno</div>', unsafe_allow_html=True)
@@ -174,7 +208,18 @@ with tab_bancos:
         with c2: cb_f = st.selectbox("Fecha BANCO:", df_b.columns, key="cb_f")
         with c3: ca_m = st.selectbox("Monto AUXILIAR:", df_a.columns, key="ca_m")
         with c4: ca_f = st.selectbox("Fecha AUXILIAR:", df_a.columns, key="ca_f")
-        if st.button("🚀 Ejecutar Conciliación Diamond", type="primary", use_container_width=True):
+        
+        st.markdown("---")
+        st.subheader("🛡️ Panel de Pre-Validación de Insumos")
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            col_rfc_b = st.selectbox("Columna de RFC en archivo BANCO (Opcional):", ["Ninguna"] + list(df_b.columns))
+            if col_rfc_b != "Ninguna" and not df_b[~df_b[col_rfc_b].apply(validar_rfc)].empty: st.warning("⚠️ RFCs inválidos en Banco.")
+        with col_v2:
+            col_rfc_a = st.selectbox("Columna de RFC en archivo AUXILIAR (Opcional):", ["Ninguna"] + list(df_a.columns))
+            if col_rfc_a != "Ninguna" and not df_a[~df_a[col_rfc_a].apply(validar_rfc)].empty: st.warning("⚠️ RFCs inválidos en Auxiliar.")
+
+        if st.button("🚀 Ejecutar Algoritmo de Conciliación Diamond", type="primary", use_container_width=True):
             df_b_c = df_b.dropna(subset=[cb_m, cb_f]).copy(); df_a_c = df_a.dropna(subset=[ca_m, ca_f]).copy()
             df_b_c['Monto_Limpio'] = pd.to_numeric(df_b_c[cb_m], errors='coerce').fillna(0).abs(); df_a_c['Monto_Limpio'] = pd.to_numeric(df_a_c[ca_m], errors='coerce').fillna(0).abs()
             df_b_c['Fecha_Limpia'] = pd.to_datetime(df_b_c[cb_f], format='mixed', dayfirst=True).dt.date; df_a_c['Fecha_Limpia'] = pd.to_datetime(df_a_c[ca_f], format='mixed', dayfirst=True).dt.date
@@ -187,22 +232,25 @@ with tab_bancos:
         if st.session_state.bancos_ejecutado:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                st.session_state.df_conciliados.to_excel(writer, sheet_name='Conciliados', index=False)
-                st.session_state.bancos_pendientes.to_excel(writer, sheet_name='Solo_Banco', index=False)
-                st.session_state.auxiliar_pendientes.to_excel(writer, sheet_name='Solo_Auxiliar', index=False)
-            st.download_button(label="📥 Descargar Reporte (.XLSX)", data=buffer.getvalue(), file_name="Reporte_Bancos.xlsx", use_container_width=True)
-            st.dataframe(st.session_state.df_conciliados, use_container_width=True)
+                st.session_state.df_conciliados.to_excel(writer, sheet_name='Partidas_Conciliadas', index=False)
+                st.session_state.bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
+                st.session_state.auxiliar_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
+            st.download_button(label="📥 Descargar Libro de Conciliación Completo (.XLSX)", data=buffer.getvalue(), file_name="Reporte_Bancos.xlsx", use_container_width=True)
+            tab1, tab2, tab3 = st.tabs(["✅ Conciliados", "⚠️ Solo Banco", "📖 Solo Auxiliar"])
+            with tab1: st.dataframe(st.session_state.df_conciliados, use_container_width=True)
+            with tab2: st.dataframe(st.session_state.bancos_pendientes, use_container_width=True)
+            with tab3: st.dataframe(st.session_state.auxiliar_pendientes, use_container_width=True)
 
 with tab_xml:
     st.write("")
-    st.markdown('<div class="section-header">📄 XML vs Contabilidad</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📄 Auditoría Fiscal: Comprobantes XML vs Auxiliar de Contabilidad</div>', unsafe_allow_html=True)
     if not st.session_state.xml_cargados:
         cx_1, cx_2 = st.columns(2)
         with cx_1: x_file = st.file_uploader("Sube Reporte de Facturas", type=["csv", "xlsx"], key="x_u")
         with cx_2: cg_file = st.file_uploader("Sube Auxiliar de Gastos", type=["csv", "xlsx"], key="cg_u")
         if x_file and cg_file: st.session_state.df_xml_gastos = leer_archivo_contable(x_file); st.session_state.df_aux_gastos = leer_archivo_contable(cg_file); st.session_state.xml_cargados = True; st.rerun()
     if st.session_state.xml_cargados:
-        cx1, cx2 = st.columns(2); xml_m = st.selectbox("Monto XML:", st.session_state.df_xml_gastos.columns, key="xml_m"); cont_m = st.selectbox("Monto Auxiliar:", st.session_state.df_aux_gastos.columns, key="cont_m")
+        cx1, cx2 = st.columns(2); xml_m = st.selectbox("Monto XML:", st.session_state.df_xml_gastos.columns, key="xml_m"); cont_m = st.selectbox("Monto Auxiliar Gasto:", st.session_state.df_aux_gastos.columns, key="cont_m")
         if st.button("🚀 Cruce XML vs Contabilidad", type="primary", use_container_width=True):
             st.session_state.df_xml_gastos['Monto_Limpio'] = pd.to_numeric(st.session_state.df_xml_gastos[xml_m], errors='coerce').fillna(0).abs()
             st.session_state.df_aux_gastos['Monto_Limpio'] = pd.to_numeric(st.session_state.df_aux_gastos[cont_m], errors='coerce').fillna(0).abs()
@@ -211,38 +259,56 @@ with tab_xml:
 
 with tab_saldos:
     st.write("")
-    st.markdown('<div class="section-header">🧾 Clientes y Proveedores (Antigüedad de Saldos)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🧾 Herramienta de Auditoría de Cartera: Clientes y Proveedores</div>', unsafe_allow_html=True)
     if not st.session_state.saldos_cargados:
         cs_1, cs_2 = st.columns(2)
-        with cs_1: sg_file = st.file_uploader("Sube Reporte Saldos ERP", type=["csv", "xlsx"], key="sg_u")
-        with cs_2: fd_file = st.file_uploader("Sube Desglose Facturas", type=["csv", "xlsx"], key="fd_u")
+        with cs_1: sg_file = st.file_uploader("Sube Reporte de Saldos Globales (ERP)", type=["csv", "xlsx"], key="sg_u_new")
+        with cs_2: fd_file = st.file_uploader("Sube Desglose de Facturas / Antigüedad", type=["csv", "xlsx"], key="fd_u_new")
         if sg_file and fd_file: st.session_state.df_saldos_globales = leer_archivo_contable(sg_file); st.session_state.df_facturas_detalle = leer_archivo_contable(fd_file); st.session_state.saldos_cargados = True; st.rerun()
     if st.session_state.saldos_cargados:
-        col_s1, col_s2, col_s3 = st.columns(3); id_cte = st.selectbox("Identificador Cuenta:", st.session_state.df_saldos_globales.columns, key="id_c"); sg_m = st.selectbox("Saldo Global:", st.session_state.df_saldos_globales.columns, key="sg_m"); fd_m = st.selectbox("Saldo Detalle:", st.session_state.df_facturas_detalle.columns, key="fd_m")
-        if st.button("🚀 Cruce Carteras", type="primary", use_container_width=True):
-            grouped = st.session_state.df_facturas_detalle.groupby(id_cte)[fd_m].sum().reset_index()
-            cruce = pd.merge(st.session_state.df_saldos_globales, grouped, on=id_cte, how='outer')
-            cruce['Diferencia'] = pd.to_numeric(cruce[sg_m], errors='coerce').fillna(0) - pd.to_numeric(cruce[fd_m], errors='coerce').fillna(0)
-            st.session_state.saldos_conciliados = cruce; st.session_state.saldos_ejecutado = True; st.rerun()
-        if st.session_state.saldos_ejecutado: st.dataframe(st.session_state.saldos_conciliados, use_container_width=True)
-
+        df_sg, df_fd = st.session_state.df_saldos_globales, st.session_state.df_facturas_detalle
+        col_s1, col_s2, col_s3 = st.columns(3); id_cte = st.selectbox("Columna Identificador (Código/RFC):", df_sg.columns, key="id_cte_new"); sg_m = st.selectbox("Monto Saldo Global Contable:", df_sg.columns, key="sg_m_new"); fd_m = st.selectbox("Monto Factura en Desglose:", df_fd.columns, key="fd_m_new")
+        if st.button("🚀 Ejecutar Cruce de Antigüedad de Saldos", type="primary", use_container_width=True):
+            df_fd_grouped = df_fd.groupby(id_cte)[fd_m].sum().reset_index()
+            df_fd_grouped.columns = [id_cte, 'Suma_Detalle_Facturas']
+            df_cruce = pd.merge(df_sg, df_fd_grouped, on=id_cte, how='outer')
+            df_cruce['Saldo_Global_Num'] = pd.to_numeric(df_cruce[sg_m], errors='coerce').fillna(0)
+            df_cruce['Suma_Detalle_Num'] = pd.to_numeric(df_cruce['Suma_Detalle_Facturas'], errors='coerce').fillna(0)
+            df_cruce['Diferencia_Calculada'] = (df_cruce['Saldo_Global_Num'] - df_cruce['Suma_Detalle_Num']).round(2)
+            st.session_state.saldos_conciliados = df_cruce[df_cruce['Diferencia_Calculada'].abs() <= st.session_state.tolerancia]
+            st.session_state.saldos_discrepancias = df_cruce[df_cruce['Diferencia_Calculada'].abs() > st.session_state.tolerancia]
+            st.session_state.saldos_ejecutado = True; st.rerun()
+        if st.session_state.saldos_ejecutado:
+            t_s1, t_s2 = st.tabs(["✅ Saldos Correctos", "⚠️ Discrepancias Encontradas"])
+            with t_s1: st.dataframe(st.session_state.saldos_conciliados, use_container_width=True)
+            with t_s2: st.dataframe(st.session_state.saldos_discrepancias, use_container_width=True)
 with tab_multidivisa:
     st.write("")
-    st.markdown('<div class="section-header">🌐 Cuentas Internacionales Multidivisa</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🌐 Herramienta Cambiaria: Conciliación de Cuentas en Dólares (USD)</div>', unsafe_allow_html=True)
+    st.session_state.tc_auditoria_val = st.number_input("Tipo de Cambio (TC) de Cierre Mensual:", min_value=1.0000, value=float(st.session_state.tc_auditoria_val), step=0.0100, key="tc_num_input")
     if not st.session_state.divisa_cargados:
         cv_1, cv_2 = st.columns(2)
-        with cv_1: de_file = st.file_uploader("Sube Cuenta USD", type=["csv", "xlsx"], key="de_u")
-        with cv_2: dn_file = st.file_uploader("Sube Pólizas MXN", type=["csv", "xlsx"], key="dn_u")
+        with cv_1: de_file = st.file_uploader("Sube Estado de Cuenta Extranjero (USD)", type=["csv", "xlsx"], key="de_u_new")
+        with cv_2: dn_file = st.file_uploader("Sube Registro en Moneda Nacional (Pólizas)", type=["csv", "xlsx"], key="dn_u_new")
         if de_file and dn_file: st.session_state.df_divisa_ext = leer_archivo_contable(de_file); st.session_state.df_divisa_nac = leer_archivo_contable(dn_file); st.session_state.divisa_cargados = True; st.rerun()
+    else:
+        st.success("🏁 Papeles de divisas extranjeras indexados.")
+        if st.button("🔄 Reestablecer Módulo Multidivisa", key="reset_v_new"): st.session_state.divisa_cargados, st.session_state.divisa_ejecutado = False, False; st.rerun()
     if st.session_state.divisa_cargados:
-        col_v1, col_v2 = st.columns(2); de_m = st.selectbox("Monto USD:", st.session_state.df_divisa_ext.columns, key="de_m"); dn_m = st.selectbox("Monto MXN:", st.session_state.df_divisa_nac.columns, key="dn_m")
-        if st.button("🚀 Calcular Fluctuación Cambiaria", type="primary", use_container_width=True):
-            st.session_state.df_divisa_ext['Monto_Limpio'] = pd.to_numeric(st.session_state.df_divisa_ext[de_m], errors='coerce').fillna(0).abs()
-            st.session_state.df_divisa_nac['Monto_Limpio'] = pd.to_numeric(st.session_state.df_divisa_nac[dn_m], errors='coerce').fillna(0).abs()
-            cruce = pd.merge_asof(st.session_state.df_divisa_ext.sort_values('Monto_Limpio'), st.session_state.df_divisa_nac.sort_values('Monto_Limpio'), on='Monto_Limpio', direction='nearest')
-            cruce['Diferencia_Cambiaria'] = (cruce['Monto_Limpio'] * st.session_state.tc_auditoria_val) - cruce['Monto_Limpio']
-            st.session_state.divisa_conciliados = cruce; st.session_state.divisa_ejecutado = True; st.rerun()
+        df_ext, df_nac = st.session_state.df_divisa_ext, st.session_state.df_divisa_nac
+        col_v1, col_v2 = st.columns(2)
+        with col_v1: de_m = st.selectbox("Monto en Dólares (USD):", df_ext.columns, key="de_m_new")
+        with col_v2: dn_m = st.selectbox("Monto en Moneda Nacional (MXN):", df_nac.columns, key="dn_m_new")
+        if st.button("🚀 Calcular Fluctuación Cambiaria Analítica", type="primary", use_container_width=True):
+            df_ext['Monto_Limpio'] = pd.to_numeric(df_ext[de_m], errors='coerce').fillna(0).abs(); df_nac['Monto_Limpio'] = pd.to_numeric(df_nac[dn_m], errors='coerce').fillna(0).abs()
+            df_ext_s, df_nac_s = df_ext.sort_values('Monto_Limpio').reset_index(drop=True), df_nac.sort_values('Monto_Limpio').reset_index(drop=True)
+            df_v_m = pd.merge_asof(df_ext_s, df_nac_s, on='Monto_Limpio', direction='nearest', suffixes=('_USD', '_Local'))
+            df_v_m['Valor_Contable_Esperado'] = (df_v_m['Monto_Limpio'] * st.session_state.tc_auditoria_val).round(2)
+            df_v_m['Monto_Local_Real'] = pd.to_numeric(df_v_m[dn_m], errors='coerce').fillna(0).abs()
+            df_v_m['Diferencia_Fluctuacion'] = (df_v_m['Valor_Contable_Esperado'] - df_v_m['Monto_Local_Real']).round(2)
+            st.session_state.divisa_conciliados = df_v_m; st.session_state.divisa_ejecutado = True; st.rerun()
         if st.session_state.divisa_ejecutado: st.dataframe(st.session_state.divisa_conciliados, use_container_width=True)
+
 with tab_nomina:
     st.write("")
     st.markdown('<div class="section-header">👔 Auditoría de Nómina: CFDI Timbrados vs Auxiliar</div>', unsafe_allow_html=True)
@@ -291,20 +357,15 @@ with tab_iva:
             st.session_state.iva_conciliados = pd.merge(st.session_state.df_iva_banco, st.session_state.df_iva_aux, on='Monto_Limpio', how='inner'); st.session_state.iva_ejecutado = True; st.rerun()
         if st.session_state.iva_ejecutado: st.dataframe(st.session_state.iva_conciliados, use_container_width=True)
 
-# ==============================================================================
-# 16. DESPLIEGUE: PESTAÑA MANUAL DE AYUDA Y GUÍA TÉCNICA (EXTENDIDA)
-# ==============================================================================
 with tab_ayuda:
     st.write("")
     st.markdown('<div class="section-header">❓ Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
-    
-    st.markdown('<div class="help-card"><div class="help-title">📊 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y descargable de Dictamen formal institucional en PDF.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🏦 2. Módulo Bancario (Bancos vs Auxiliar)</div>Herramienta de cruce bidimensional estricto por fecha e importe para cuadrar estados de cuenta bancarios con el libro contable de bancos de la empresa.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📄 3. XML vs Contabilidad (Auditoría Fiscal)</div>Mapeo inteligente para amarrar facturas electrónicas e identificar de manera inmediata CFDIs omitidos en el Auxiliar de Gastos.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🧾 4. Clientes y Proveedores (Control de Cartera)</div>Herramienta de sumarización automática que cruza la balanza de saldos globales contra los reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🌐 5. Multidivisa USD (Cuentas Internacionales)</div>Algoritmo de paridad para evaluar operaciones en dólares y calcular de forma exacta el ajuste por ganancia o pérdida cambiaria al cierre del ejercicio.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">👔 6. Nómina CFDI (Auditoría de Sueldos)</div>Cruzamiento masivo para verificar que cada recibo de nómina timbrado ante la autoridad cuente con su correcta póliza de gasto interna.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📦 7. Inventarios (Control de Almacén)</div>Herramienta de comparación de existencias para confrontar el levantamiento físico real de auditoría contra los saldos del Kárdex contable.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">💸 8. IVA Flujo (Amarre de Impuestos)</div>Módulo especializado para validar que el IVA determinado en la declaración coincida al centavo con el flujo de efectivo real reflejado en los bancos.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">⚙️ 9. Configuración y Copias JSON</div>Sección administrativa para gestionar los membretes, la tolerancia decimal de centavos, el selector de moneda y la descarga/carga de respaldos universales de la sesión.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🔍 10. Rastreador Rápido (Barra Lateral)</div>Buscador transversal de alta frecuencia para rastrear cualquier importe numérico sospechoso de inmediato en todas las tablas activas.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">📊 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">🏦 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">📄 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">🧾 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">🌐 5. Multidivisa USD</div>Algoritmo cambiario para calcular de forma exacta la ganancia o pérdida cambiaria.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">👔 6. Nómina CFDI</div>Cruzamiento masivo para verificar recibos de nómina timbrados ante el SAT vs pólizas.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">📦 7. Inventarios</div>Levantamiento físico real de auditoría contra los saldos del Kárdex contable.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">💸 8. IVA Flujo</div>Validar que el IVA determinado coincida con el flujo real reflejado en bancos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">⚙️ 9. Configuración y Copias JSON</div>Gestión de membretes, tolerancia decimal y carga/descarga de respaldos de sesión.</div>', unsafe_allow_html=True)
