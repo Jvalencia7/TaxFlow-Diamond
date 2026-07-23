@@ -36,7 +36,7 @@ variables_sesion = {
     'df_conciliados': None, 'bancos_pendientes': None, 'auxiliar_pendientes': None,
     'suma_conciliado': 0.0, 'suma_banco_p': 0.0, 'suma_aux_p': 0.0, 'ejecutado': False,
     'empresa': "", 'periodo': "", 'auditor': "",
-    'tolerancia': 0.50, 'divisa': "MXN ($)"
+    'tolerancia': 0.50, 'divisa': "MXN ($)", 'logo_bytes': None
 }
 
 for llave, valor_defecto in variables_sesion.items():
@@ -54,72 +54,23 @@ tab_dashboard, tab_conciliacion, tab_configuracion = st.tabs([
 ])
 
 # ==============================================================================
-# 4. BARRA LATERAL OPTIMIZADA: CARGADOR DE LOGO Y BUSCADOR DE ALTA FRECUENCIA
+# 4. BARRA LATERAL OPTIMIZADA (SOLO LOGOTIPO FIJO Y RASTREADOR)
 # ==============================================================================
-st.sidebar.markdown("### 🖼️ Identidad Corporativa")
-# Cargador dinámico para que subas el logotipo de tu marca desde la interfaz
-logo_file = st.sidebar.file_uploader("Sube el logotipo de tu Empresa/Despacho", type=["png", "jpg", "jpeg", "webp"], key="logo_uploader")
-if logo_file is not None:
-    st.sidebar.image(logo_file, use_container_width=True)
+# Despliegue estricto del logotipo guardado en memoria en la pura parte superior
+if st.session_state.logo_bytes is not None:
+    st.sidebar.image(st.session_state.logo_bytes, use_container_width=True)
 else:
-    st.sidebar.info("💡 Arrastra aquí un logo corporativo (PNG/JPG) para personalizar la suite.")
+    st.sidebar.info("🏢 Sin Logotipo Institucional. Configúralo en la pestaña superior de Configuración.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🔍 Rastreador Rápido de Auditoría")
-# Herramienta de alta frecuencia para buscar importes o textos sospechosos al instante
 busqueda_rapida = st.sidebar.text_input("Ingresa monto o texto a rastrear:", placeholder="Ej. 15400.50 o Transferencia")
 
 def leer_archivo_contable(file):
     if file.name.endswith('.csv'): return pd.read_csv(file)
     return pd.read_excel(file)
 # ==============================================================================
-# 5. MOTOR DE RESPALDO UNIVERSAL AUTOMÁTICO (.JSON EN BARRA LATERAL)
-# ==============================================================================
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 💾 Copias de Seguridad (.JSON)")
-
-if st.session_state.ejecutado:
-    respaldo_dinamico = {}
-    for llave in variables_sesion.keys():
-        valor = st.session_state[llave]
-        if isinstance(valor, pd.DataFrame):
-            respaldo_dinamico[llave] = {"tipo": "dataframe", "datos": valor.to_json(orient='split')}
-        else:
-            respaldo_dinamico[llave] = {"tipo": "nativo", "datos": valor}
-            
-    json_string = json.dumps(respaldo_dinamico)
-    st.sidebar.download_button(
-        label="📥 Guardar Auditoría en JSON",
-        data=json_string,
-        file_name=f"Backup_Auditoria_{st.session_state.empresa if st.session_state.empresa else 'TaxFlow'}.json",
-        mime="application/json",
-        use_container_width=True
-    )
-else:
-    st.sidebar.info("💡 Ejecuta una conciliación primero para habilitar el respaldo JSON.")
-
-archivo_json_cargado = st.sidebar.file_uploader("📂 Cargar Auditoría (.JSON)", type=["json"], key="json_uploader")
-
-if archivo_json_cargado is not None:
-    try:
-        datos_restaurados = json.load(archivo_json_cargado)
-        for llave, paquete in datos_restaurados.items():
-            if paquete["tipo"] == "dataframe" and paquete["datos"] is not None:
-                st.session_state[llave] = pd.read_json(io.StringIO(paquete["datos"]), orient='split')
-            else:
-                st.session_state[llave] = paquete["datos"]
-        st.sidebar.success("✓ Respaldo cargado con éxito.")
-        st.rerun()
-    except Exception as e:
-        st.sidebar.error(f"Archivo JSON no compatible: {e}")
-
-st.sidebar.markdown("---")
-if st.sidebar.button("🔒 Cerrar Sesión y Limpiar Todo", type="secondary", use_container_width=True):
-    for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
-    st.rerun()
-
-# ==============================================================================
-# 6. DESPLIEGUE: PESTAÑA CONFIGURACIÓN DEL SISTEMA
+# 5. DESPLIEGUE: PESTAÑA CONFIGURACIÓN DEL SISTEMA (CENTRO DE ADMINISTRACIÓN)
 # ==============================================================================
 with tab_configuracion:
     st.write("")
@@ -138,20 +89,76 @@ with tab_configuracion:
         lista_divisas = ["MXN ($)", "USD ($)", "EUR (€)", "CLP ($)", "COP ($)"]
         indice_defecto = lista_divisas.index(st.session_state.divisa) if st.session_state.divisa in lista_divisas else 0
         st.session_state.divisa = st.selectbox("Divisa de Presentación de Reportes:", lista_divisas, index=indice_defecto)
-    st.success("⚙️ Configuraciones almacenadas correctamente en la sesión.")
+    
+    # NUEVA UBICACIÓN: Cargador de Identidad visual corporativa dentro de configuración
+    st.markdown("---")
+    st.subheader("🖼️ Identidad Corporativa")
+    logo_file = st.file_uploader("Sube o actualiza el logotipo de tu Empresa/Despacho (PNG, JPG)", type=["png", "jpg", "jpeg", "webp"], key="logo_config")
+    if logo_file is not None:
+        st.session_state.logo_bytes = logo_file.read()
+        st.success("✓ Logotipo corporativo indexado en la barra lateral superior. Guarda tu JSON para conservarlo.")
+        
+    # NUEVA UBICACIÓN: Gestión integral de Copias de Seguridad (.JSON)
+    st.markdown("---")
+    st.subheader("💾 Copias de Seguridad de la Auditoría (.JSON)")
+    
+    col_j1, col_j2 = st.columns(2)
+    with col_j1:
+        st.write("**Exportar Sesión:** Guarda todo tu avance y archivos cargados en un archivo seguro:")
+        if st.session_state.ejecutado:
+            respaldo_dinamico = {}
+            for llave in variables_sesion.keys():
+                valor = st.session_state[llave]
+                if isinstance(valor, pd.DataFrame):
+                    respaldo_dinamico[llave] = {"tipo": "dataframe", "datos": valor.to_json(orient='split')}
+                elif llave == 'logo_bytes' and valor is not None:
+                    # Convierte los bytes del logo a texto plano almacenable en JSON
+                    respaldo_dinamico[llave] = {"tipo": "bytes", "datos": valor.hex()}
+                else:
+                    respaldo_dinamico[llave] = {"tipo": "nativo", "datos": valor}
+                    
+            json_string = json.dumps(respaldo_dinamico)
+            st.download_button(
+                label="📥 Descargar y Guardar Auditoría en JSON",
+                data=json_string,
+                file_name=f"Backup_Auditoria_{st.session_state.empresa if st.session_state.empresa else 'TaxFlow'}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        else:
+            st.info("💡 Ejecuta una conciliación primero en su pestaña para descargar el respaldo JSON.")
+            
+    with col_j2:
+        st.write("**Importar Sesión:** Arrastra tu copia de seguridad para restaurar tus tablas y configuraciones:")
+        archivo_json_cargado = st.file_uploader("Sube tu archivo de respaldo (.JSON)", type=["json"], key="json_config_uploader")
+        if archivo_json_cargado is not None:
+            try:
+                datos_restaurados = json.load(archivo_json_cargado)
+                for llave, paquete in datos_restaurados.items():
+                    if paquete["tipo"] == "dataframe" and paquete["datos"] is not None:
+                        st.session_state[llave] = pd.read_json(io.StringIO(paquete["datos"]), orient='split')
+                    elif paquete["tipo"] == "bytes" and paquete["datos"] is not None:
+                        st.session_state[llave] = bytes.fromhex(paquete["datos"])
+                    else:
+                        st.session_state[llave] = paquete["datos"]
+                st.success("✓ Auditoría restaurada al 100%.")
+                st.rerun()
+            except Exception as e: st.error(f"Archivo JSON inválido: {e}")
+            
+    st.markdown("---")
+    if st.button("🔒 Cerrar Sesión y Purgar Servidor", type="secondary", use_container_width=True):
+        for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
+        st.rerun()
 
 # ==============================================================================
 # 7. DESPLIEGUE: PESTAÑA DASHBOARD GENERAL
 # ==============================================================================
 with tab_dashboard:
     st.write("")
-    
-    # SI EL USUARIO ESCRIBE ALGO EN EL RASTREADOR RÁPIDO DE LA BARRA LATERAL
     if busqueda_rapida and st.session_state.ejecutado:
         st.markdown('<div class="section-header">🎯 Resultados del Rastreador de Auditoría</div>', unsafe_allow_html=True)
         st.write(f"Filtrando registros que contengan el valor: **{busqueda_rapida}**")
         
-        # Función interna para buscar coincidencias de texto/número en el dataframe
         def filtrar_por_texto(df, termino):
             if df is None: return None
             mascara = df.astype(str).apply(lambda x: x.str.contains(termino, case=False, na=False)).any(axis=1)
@@ -162,14 +169,13 @@ with tab_dashboard:
         res_auxl = filtrar_por_texto(st.session_state.auxiliar_pendientes, busqueda_rapida)
         
         c_tab1, c_tab2, c_tab3 = st.tabs(["✅ Conciliados Encontrados", "⚠️ En Banco Encontrados", "📖 En Auxiliar Encontrados"])
-        with c_tab1: st.dataframe(res_conc, use_container_width=True) if res_conc is not None and len(res_conc) > 0 else st.info("Sin registros coincidentes en Conciliados.")
-        with c_tab2: st.dataframe(res_banc, use_container_width=True) if res_banc is not None and len(res_banc) > 0 else st.info("Sin registros coincidentes en Pendientes Banco.")
-        with c_tab3: st.dataframe(res_auxl, use_container_width=True) if res_auxl is not None and len(res_auxl) > 0 else st.info("Sin registros coincidentes en Pendientes Auxiliar.")
+        with c_tab1: st.dataframe(res_conc, use_container_width=True) if res_conc is not None and len(res_conc) > 0 else st.info("Sin registros en Conciliados.")
+        with c_tab2: st.dataframe(res_banc, use_container_width=True) if res_banc is not None and len(res_banc) > 0 else st.info("Sin registros en Pendientes Banco.")
+        with c_tab3: st.dataframe(res_auxl, use_container_width=True) if res_auxl is not None and len(res_auxl) > 0 else st.info("Sin registros en Pendientes Auxiliar.")
     
-    # SINO, MUESTRA EL DASHBOARD GENERAL HABITUAL
     elif st.session_state.ejecutado:
         st.success(f"💾 Información retenida en memoria activa para: {st.session_state.empresa if st.session_state.empresa else 'Cliente Genérico'}")
-        simbolo = st.session_state.divisa.split(" ")[1].replace("(", "").replace(")", "")
+        simbolo = st.session_state.divisa.split(" ")[0].replace("MXN", "$").replace("USD", "$").replace("EUR", "€").replace("CLP", "$").replace("COP", "$")
         
         m1, m2, m3 = st.columns(3)
         m1.metric("Capital Conciliado", f"{simbolo} {st.session_state.suma_conciliado:,.2f}", "✓ Resguardado")
@@ -184,13 +190,12 @@ with tab_dashboard:
         fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Bienvenido a TaxFlow-Diamond. Sube tus papeles de trabajo contables en la pestaña superior para comenzar o arrastra un archivo de respaldo .JSON.")
+        st.info("Bienvenido a TaxFlow-Diamond. Sube tus papeles de trabajo contables en la pestaña superior para comenzar o restaura una sesión cargando tu respaldo .JSON en Configuración.")
 # ==============================================================================
 # 8. DESPLIEGUE: PESTAÑA CONCILIACIÓN BANCARIA
 # ==============================================================================
 with tab_conciliacion:
     st.write("")
-    
     if not st.session_state.archivos_cargados:
         col1, col2 = st.columns(2)
         with col1: banco_file = st.file_uploader("Sube el archivo del Banco (Excel o CSV)", type=["csv", "xlsx"], key="banco_state")
