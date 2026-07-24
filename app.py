@@ -9,6 +9,8 @@ import io
 import json
 import re
 import datetime
+import hashlib
+import os
 from reconciliation import conciliar_dos_fuentes
 
 # ==============================================================================
@@ -25,15 +27,15 @@ st.set_page_config(
 st.markdown("""
     <style>
     .stApp { background-color: #0D1117; }
-    .main-title { font-size: 38px !important; font-weight: 700 !important; color: #00D4FF; margin-bottom: 5px; }
-    .subtitle { font-size: 16px !important; color: #639FAB; margin-bottom: 30px; font-weight: 500; }
-    .section-header { color: #00D4FF; font-weight: 600; border-bottom: 2px solid #161B22; padding-bottom: 10px; margin-bottom: 20px; font-size: 22px; }
+    .main-title { font-size: 38px !important; font-weight: 700 !important; color: #FFFFFF; margin-bottom: 5px; }
+    .subtitle { font-size: 16px !important; color: #FFFFFF; margin-bottom: 30px; font-weight: 500; opacity: 0.75; }
+    .section-header { color: #FFFFFF; font-weight: 600; border-bottom: 2px solid #161B22; padding-bottom: 10px; margin-bottom: 20px; font-size: 22px; }
     .kpi-card { padding: 15px; border-radius: 6px; color: #0D1117; font-weight: 700; text-align: center; margin-bottom: 15px; }
     .kpi-green { background-color: #2ECC71 !important; }
     .kpi-yellow { background-color: #F1C40F !important; }
     .kpi-red { background-color: #E74C3C !important; }
     .help-card { background-color: #161B22; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #00D4FF; }
-    .help-title { color: #00D4FF; font-size: 18px; font-weight: 600; margin-bottom: 10px; }
+    .help-title { color: #FFFFFF; font-size: 18px; font-weight: 600; margin-bottom: 10px; }
     div.stButton > button:first-child[data-testid="stSidebarActionButton"] { background-color: #00D4FF !important; color: #0D1117 !important; font-weight: 700 !important; border: none !important; }
 
     /* ---- Estilo Dashboard tipo BlackLine (versión oscura) ---- */
@@ -45,7 +47,7 @@ st.markdown("""
     .bl-subrow { display:flex; justify-content:space-between; font-size:13px; color:#C4CDD8; margin-top:8px; padding-top:8px; border-top:1px solid #2A313C; }
     .bl-badge { padding:1px 8px; border-radius:10px; font-size:11px; font-weight:700; margin-right:6px; }
     .bl-badge-orange { background:#4A2E15; color:#FDBA74; }
-    .bl-badge-blue { background:#22284D; color:#A5B4FC; }
+    .bl-badge-blue { background:#22284D; color:#FFFFFF; }
     .bl-badge-green { background:#123425; color:#6EE7B7; }
     .bl-badge-red { background:#43181A; color:#FCA5A5; }
     .bl-section { background:#161B22; border-radius:10px; padding:22px 24px; border:1px solid #2A313C; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
@@ -93,14 +95,78 @@ for llave, valor_defecto in variables_sesion.items():
     if llave not in st.session_state: st.session_state[llave] = valor_defecto
 
 # ==============================================================================
-# 3. NAVEGACIÓN SUPERIOR INTEGRAL DE 16 PESTAÑAS CORPORATIVAS
+# 1.5 SEGURIDAD: AUTENTICACIÓN DE USUARIOS
 # ==============================================================================
-tab_dashboard, tab_bancos, tab_xml, tab_saldos, tab_multidivisa, tab_nomina, tab_inventarios, tab_iva, tab_activo_fijo, tab_razones, tab_sat, tab_aprobacion, tab_pbc, tab_bitacora, tab_configuracion, tab_ayuda = st.tabs([
-    "📊 Dashboard", "🏦 Bancos vs Auxiliar", "📄 XML vs Contabilidad", "🧾 Clientes y Proveedores", 
-    "🌐 Multidivisa USD", "👔 Nómina CFDI", "📦 Inventarios", "💸 IVA Flujo",
-    "🏭 Activo Fijo", "📈 Razones Financieras", "🏛️ Cumplimiento SAT", "✅ Revisión y Aprobación", "📋 Checklist PBC", "📜 Bitácora",
-    "⚙️ Configuración", "❓ Ayuda"
-])
+# NOTA IMPORTANTE: 'usuarios_sistema' vive DELIBERADAMENTE fuera de
+# 'variables_sesion' — es la base de usuarios de la app, no debe borrarse
+# cuando alguien cierra sesión o reinicia una auditoría. Aun así, como no hay
+# una base de datos real detrás, esta lista de usuarios vive solo en la
+# memoria de este proceso de Streamlit: se pierde si el servidor se reinicia.
+# Para un uso real en producción, esto debe respaldarse en una base de datos
+# externa (esto es un control de flujo de trabajo, no un sistema de
+# autenticación de nivel productivo).
+def _hash_password(password, salt=None):
+    if salt is None:
+        salt = os.urandom(16).hex()
+    hash_val = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt), 100_000).hex()
+    return salt, hash_val
+
+def _verificar_password(password, salt, hash_guardado):
+    _, hash_calculado = _hash_password(password, salt)
+    return hash_calculado == hash_guardado
+
+if 'usuarios_sistema' not in st.session_state:
+    _salt_admin, _hash_admin = _hash_password("TaxFlow2026!")
+    st.session_state.usuarios_sistema = {
+        "admin": {
+            "salt": _salt_admin, "hash": _hash_admin, "rol": "Administrador",
+            "bloqueado": False, "creado": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "ultimo_acceso": None, "intentos_fallidos": 0,
+        }
+    }
+if 'sesion_autenticada' not in st.session_state: st.session_state.sesion_autenticada = False
+if 'usuario_autenticado' not in st.session_state: st.session_state.usuario_autenticado = None
+
+if not st.session_state.sesion_autenticada:
+    st.warning("🔑 Usuario por defecto: **admin** — Contraseña: **TaxFlow2026!** — cámbiala en cuanto entres desde '👥 Gestión de Usuarios'.")
+    with st.form("form_login"):
+        st.markdown("### 🔒 Iniciar Sesión")
+        usuario_input = st.text_input("Usuario:")
+        password_input = st.text_input("Contraseña:", type="password")
+        enviado = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+    if enviado:
+        registro_usuario = st.session_state.usuarios_sistema.get(usuario_input)
+        if registro_usuario is None:
+            st.error("Usuario o contraseña incorrectos.")
+        elif registro_usuario["bloqueado"] or registro_usuario["intentos_fallidos"] >= 5:
+            registro_usuario["bloqueado"] = True
+            st.error("🚫 Este usuario está bloqueado. Contacta a un Administrador.")
+        elif _verificar_password(password_input, registro_usuario["salt"], registro_usuario["hash"]):
+            st.session_state.sesion_autenticada = True
+            st.session_state.usuario_autenticado = usuario_input
+            st.session_state.usuario_actual = usuario_input
+            st.session_state.rol_actual = registro_usuario["rol"]
+            registro_usuario["intentos_fallidos"] = 0
+            registro_usuario["ultimo_acceso"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            st.session_state.bitacora_eventos.append({
+                "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Usuario": usuario_input, "Rol": registro_usuario["rol"],
+                "Módulo": "Seguridad", "Acción": "Inició sesión",
+            })
+            st.rerun()
+        else:
+            registro_usuario["intentos_fallidos"] += 1
+            if registro_usuario["intentos_fallidos"] >= 5:
+                registro_usuario["bloqueado"] = True
+                st.error("🚫 Demasiados intentos fallidos: este usuario quedó bloqueado automáticamente. Contacta a un Administrador.")
+            else:
+                st.error(f"Usuario o contraseña incorrectos. Intento {registro_usuario['intentos_fallidos']}/5 antes del bloqueo automático.")
+    st.stop()
+
+# ==============================================================================
+# 3. NAVEGACIÓN: se construye al final del archivo, agrupada por categorías
+#    (una vez que todas las funciones render_x() ya están definidas)
+# ==============================================================================
 
 # ==============================================================================
 # 4. PANEL LATERAL (IDENTIDAD CORPORATIVA FIJA Y UTILERÍAS)
@@ -108,20 +174,22 @@ tab_dashboard, tab_bancos, tab_xml, tab_saldos, tab_multidivisa, tab_nomina, tab
 if st.session_state.logo_bytes is not None: st.sidebar.image(st.session_state.logo_bytes, use_container_width=True)
 else: st.sidebar.info("🏢 Sin Logotipo Institucional. Configúralo en la pestaña superior de Configuración.")
 
-if st.sidebar.button("🔒 Cerrar Sesión", type="primary", use_container_width=True, key="sidebar_logout_btn"):
-    for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
-    st.rerun()
-
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 👤 Usuario y Rol")
-st.session_state.usuario_actual = st.sidebar.text_input("Nombre de quien captura:", value=st.session_state.usuario_actual, key="usuario_sidebar")
-_roles_disponibles = ["Preparador", "Revisor", "Socio/Aprobador"]
-st.session_state.rol_actual = st.sidebar.selectbox(
-    "Rol en esta sesión:", _roles_disponibles,
-    index=_roles_disponibles.index(st.session_state.rol_actual) if st.session_state.rol_actual in _roles_disponibles else 0,
-    key="rol_sidebar",
-)
-st.sidebar.caption("⚠️ Este rol solo controla el flujo de trabajo dentro de la app (quién puede marcar 'Aprobado', etc.) — no es una autenticación real; no protege el acceso a los datos.")
+st.sidebar.markdown("### 👤 Sesión Activa")
+st.sidebar.success(f"**{st.session_state.usuario_autenticado}** ({st.session_state.rol_actual})")
+if st.sidebar.button("🔒 Cerrar Sesión", type="primary", use_container_width=True, key="sidebar_logout_btn"):
+    st.session_state.bitacora_eventos.append({
+        "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Usuario": st.session_state.usuario_autenticado, "Rol": st.session_state.rol_actual,
+        "Módulo": "Seguridad", "Acción": "Cerró sesión",
+    })
+    _eventos_previos = st.session_state.bitacora_eventos
+    for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
+    st.session_state.bitacora_eventos = _eventos_previos  # conservamos la bitácora aunque se reinicien los datos de trabajo
+    st.session_state.sesion_autenticada = False
+    st.session_state.usuario_autenticado = None
+    st.rerun()
+st.sidebar.caption("⚠️ Cerrar sesión también reinicia los datos de esta auditoría (bancos, XML, etc.) — descarga tu respaldo .JSON antes si quieres conservarlos.")
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("🏢 Multiempresa (auditorías en esta sesión)"):
@@ -320,7 +388,7 @@ def calcular_estado_modulos():
 def _pct(parte, total):
     return (parte / total * 100) if total else 0.0
 
-with tab_dashboard:
+def render_dashboard():
     st.write("")
     estado = calcular_estado_modulos()
     tk, rc = estado["tasks"], estado["recs"]
@@ -490,7 +558,7 @@ with tab_dashboard:
 # ==============================================================================
 # CONFIGURACIÓN COMPLETA RESTAURADA CON BOTONES DE RESPALDO JSON
 # ==============================================================================
-with tab_configuracion:
+def render_configuracion():
     st.write("")
     st.markdown('<div class="section-header">⚙️ Panel de Parámetros Globales y Membretes</div>', unsafe_allow_html=True)
     col_m1, col_m2, col_m3 = st.columns(3)
@@ -521,29 +589,33 @@ with tab_configuracion:
         nuevos_bytes = logo_file.read()
         if st.session_state.logo_bytes != nuevos_bytes: st.session_state.logo_bytes = nuevos_bytes; st.session_state.fase_progreso = 2; st.rerun()
 
-    # RESTAURADOS AQUÍ LOS BOTONES DE RESPALDO JSON COMPLETOS
+    # RESPALDO JSON COMPLETO — sin excepción de ningún módulo
     st.markdown("---")
     st.subheader("💾 Copias de Seguridad de la Auditoría (.JSON)")
+    st.caption("El respaldo incluye TODOS los módulos sin excepción: los 8 de conciliación (Bancos, XML, Saldos, Multidivisa, Nómina, Inventarios, IVA, Activo Fijo), Razones Financieras, Checklist SAT, Checklist PBC, Revisión y Aprobación, Bitácora de Auditoría, Configuración, auditorías guardadas (Multiempresa) y la base de Usuarios del sistema (incluye contraseñas cifradas).")
     col_j1, col_j2 = st.columns(2)
     with col_j1:
-        if st.session_state.bancos_ejecutado or st.session_state.xml_ejecutado or st.session_state.saldos_ejecutado:
-            respaldo_dinamico = _serializar_estado({llave: st.session_state[llave] for llave in variables_sesion.keys()})
-            st.download_button(label="📥 Descargar Respaldo JSON", data=json.dumps(respaldo_dinamico), file_name="Backup_TaxFlow.json", mime="application/json", use_container_width=True, on_click=lambda: registrar_evento("Configuración", "Descargó respaldo JSON completo"))
-        else:
-            st.info("💡 Ejecuta algún módulo de conciliación primero para poder descargar un respaldo .JSON")
-            
+        llaves_respaldo_completo = list(variables_sesion.keys()) + ["usuarios_sistema"]
+        respaldo_dinamico = _serializar_estado({llave: st.session_state[llave] for llave in llaves_respaldo_completo})
+        st.download_button(label="📥 Descargar Respaldo JSON Completo", data=json.dumps(respaldo_dinamico), file_name="Backup_TaxFlow.json", mime="application/json", use_container_width=True, on_click=lambda: registrar_evento("Configuración", "Descargó respaldo JSON completo (todos los módulos)"))
+
     with col_j2:
         archivo_json_cargado = st.file_uploader("Sube tu archivo de respaldo (.JSON)", type=["json"], key="json_config_uploader")
+        restaurar_usuarios = st.checkbox("Restaurar también la base de Usuarios (usuarios, roles, contraseñas)", value=False, key="restaurar_usuarios_chk")
+        if not restaurar_usuarios:
+            st.caption("⚠️ Por seguridad, restaurar usuarios está desmarcado por defecto — así no se sobreescribe accidentalmente tu lista de usuarios actual (incluyendo tu propia contraseña) al cargar un respaldo de otra auditoría.")
         if archivo_json_cargado is not None:
             try:
                 datos_restaurados = json.load(archivo_json_cargado)
                 for llave, valor in _deserializar_estado(datos_restaurados).items():
+                    if llave == "usuarios_sistema" and not restaurar_usuarios:
+                        continue
                     st.session_state[llave] = valor
-                registrar_evento("Configuración", "Restauró la sesión desde un respaldo JSON")
+                registrar_evento("Configuración", f"Restauró la sesión desde un respaldo JSON (usuarios {'incluidos' if restaurar_usuarios else 'excluidos'})")
                 st.success("✓ Ecosistema restaurado desde el JSON con éxito.")
                 st.rerun()
             except Exception as e: st.error(f"Error JSON: {e}")
-with tab_bancos:
+def render_bancos():
     st.write("")
     st.markdown('<div class="section-header">🏦 Módulo Bancario: Estado de Cuenta vs Auxiliar Contable Interno</div>', unsafe_allow_html=True)
     if not st.session_state.bancos_cargados:
@@ -609,7 +681,7 @@ with tab_bancos:
             with tab2: st.dataframe(st.session_state.bancos_pendientes, use_container_width=True)
             with tab3: st.dataframe(st.session_state.auxiliar_pendientes, use_container_width=True)
 
-with tab_xml:
+def render_xml():
     st.write("")
     st.markdown('<div class="section-header">📄 Auditoría Fiscal: Comprobantes XML vs Auxiliar de Contabilidad</div>', unsafe_allow_html=True)
     if not st.session_state.xml_cargados:
@@ -660,7 +732,7 @@ with tab_xml:
             with tx2: st.dataframe(st.session_state.xml_pend_xml, use_container_width=True)
             with tx3: st.dataframe(st.session_state.xml_pend_aux, use_container_width=True)
 
-with tab_saldos:
+def render_saldos():
     st.write("")
     st.markdown('<div class="section-header">🧾 Herramienta de Auditoría de Cartera: Clientes y Proveedores</div>', unsafe_allow_html=True)
     if not st.session_state.saldos_cargados:
@@ -695,7 +767,7 @@ with tab_saldos:
             t_s1, t_s2 = st.tabs(["✅ Saldos Correctos", "⚠️ Discrepancias Encontradas"])
             with t_s1: st.dataframe(st.session_state.saldos_conciliados, use_container_width=True)
             with t_s2: st.dataframe(st.session_state.saldos_discrepancias, use_container_width=True)
-with tab_multidivisa:
+def render_multidivisa():
     st.write("")
     st.markdown('<div class="section-header">🌐 Herramienta Cambiaria: Conciliación de Cuentas en Dólares (USD)</div>', unsafe_allow_html=True)
     st.session_state.tc_auditoria_val = st.number_input("Tipo de Cambio (TC) de Cierre Mensual:", min_value=1.0000, value=float(st.session_state.tc_auditoria_val), step=0.0100, key="tc_num_input")
@@ -761,7 +833,7 @@ with tab_multidivisa:
             with td2: st.dataframe(st.session_state.divisa_pend_ext, use_container_width=True)
             with td3: st.dataframe(st.session_state.divisa_pend_nac, use_container_width=True)
 
-with tab_nomina:
+def render_nomina():
     st.write("")
     st.markdown('<div class="section-header">👔 Auditoría de Nómina: CFDI Timbrados vs Auxiliar</div>', unsafe_allow_html=True)
     if not st.session_state.nomina_cargados:
@@ -812,7 +884,7 @@ with tab_nomina:
             with tn2: st.dataframe(st.session_state.nomina_pend_cfdi, use_container_width=True)
             with tn3: st.dataframe(st.session_state.nomina_pend_aux, use_container_width=True)
 
-with tab_inventarios:
+def render_inventarios():
     st.write("")
     st.markdown('<div class="section-header">📦 Inventarios Físicos vs Almacén ERP</div>', unsafe_allow_html=True)
     if not st.session_state.inventarios_cargados:
@@ -862,7 +934,7 @@ with tab_inventarios:
             with ti1: st.dataframe(st.session_state.inventarios_conciliados, use_container_width=True)
             with ti2: st.dataframe(st.session_state.inventarios_discrepancias, use_container_width=True)
 
-with tab_iva:
+def render_iva():
     st.write("")
     st.markdown('<div class="section-header">💸 IVA Efectivamente Cobrado / Pagado (Flujo de Efectivo)</div>', unsafe_allow_html=True)
     if not st.session_state.iva_cargados:
@@ -913,7 +985,7 @@ with tab_iva:
             with tiv2: st.dataframe(st.session_state.iva_pend_banco, use_container_width=True)
             with tiv3: st.dataframe(st.session_state.iva_pend_aux, use_container_width=True)
 
-with tab_activo_fijo:
+def render_activo_fijo():
     st.write("")
     st.markdown('<div class="section-header">🏭 Activo Fijo: Depreciación Esperada vs Registrada</div>', unsafe_allow_html=True)
     st.caption("A diferencia de los demás módulos, aquí se sube UN solo archivo (el kárdex de activos fijos ya trae el valor original y la depreciación acumulada contable en la misma fila).")
@@ -971,7 +1043,7 @@ with tab_activo_fijo:
             with taf1: st.dataframe(st.session_state.af_conciliados, use_container_width=True)
             with taf2: st.dataframe(st.session_state.af_discrepancias, use_container_width=True)
 
-with tab_razones:
+def render_razones():
     st.write("")
     st.markdown('<div class="section-header">📈 Análisis de Razones Financieras</div>', unsafe_allow_html=True)
     st.caption("Captura las cifras del periodo (de tu Balance General y Estado de Resultados) para calcular las razones financieras estándar. Se guardan automáticamente en esta sesión.")
@@ -1024,7 +1096,7 @@ with tab_razones:
     else:
         st.info("💡 Captura al menos algunas cifras para ver las razones calculadas.")
 
-with tab_sat:
+def render_sat():
     st.write("")
     st.markdown('<div class="section-header">🏛️ Checklist de Cumplimiento SAT</div>', unsafe_allow_html=True)
     st.caption("Esto es un rastreador de estatus de obligaciones (qué se presentó, cuándo, con qué acuse), NO un calculador de impuestos — los montos e ISR/IVA a pagar se calculan en tu sistema contable o con tu asesor fiscal; aquí solo llevas el control de cumplimiento.")
@@ -1055,10 +1127,10 @@ with tab_sat:
     if not vencidas.empty:
         st.error(f"⚠️ {len(vencidas)} obligación(es) con fecha límite vencida y aún marcadas como 'Pendiente'.")
 
-with tab_aprobacion:
+def render_aprobacion():
     st.write("")
     st.markdown('<div class="section-header">✅ Flujo de Revisión y Aprobación</div>', unsafe_allow_html=True)
-    st.caption("Deja constancia de quién preparó, revisó y aprobó cada módulo. El rol activo (panel lateral) solo sugiere qué acciones tienen sentido para ti — no bloquea nada a nivel de seguridad real.")
+    st.caption("Deja constancia de quién preparó, revisó y aprobó cada módulo. El rol de tu usuario autenticado determina qué acciones tienen sentido para ti (ver panel lateral).")
     estado_modulos_actual = calcular_estado_modulos()
     for modulo_info in estado_modulos_actual["modulos"]:
         nombre_mod = modulo_info["nombre"]
@@ -1092,7 +1164,7 @@ with tab_aprobacion:
     if not resumen_aprobacion.empty:
         st.dataframe(resumen_aprobacion, use_container_width=True)
 
-with tab_pbc:
+def render_pbc():
     st.write("")
     st.markdown('<div class="section-header">📋 Checklist de Documentos Solicitados al Cliente (PBC)</div>', unsafe_allow_html=True)
     st.caption("Lleva control de qué se pidió, a quién, para cuándo, y si ya llegó. Agrega o quita renglones directamente en la tabla.")
@@ -1123,7 +1195,7 @@ with tab_pbc:
     if total_docs > 0:
         st.progress(recibidos / total_docs, text=f"{recibidos} de {total_docs} documentos recibidos")
 
-with tab_bitacora:
+def render_bitacora():
     st.write("")
     st.markdown('<div class="section-header">📜 Bitácora de Auditoría</div>', unsafe_allow_html=True)
     st.caption("Registro cronológico de las acciones realizadas en esta sesión (usuario, rol, módulo y acción). Se guarda dentro del respaldo JSON, pero se pierde si cierras el navegador sin descargarlo.")
@@ -1140,7 +1212,74 @@ with tab_bitacora:
     else:
         st.info("💡 Aún no hay eventos registrados. Cada vez que ejecutes una conciliación o cambies un estado de aprobación, aparecerá aquí.")
 
-with tab_ayuda:
+def render_gestion_usuarios():
+    st.write("")
+    st.markdown('<div class="section-header">👥 Gestión de Usuarios</div>', unsafe_allow_html=True)
+    if st.session_state.rol_actual != "Administrador":
+        st.warning("🚫 Acceso restringido. Solo un usuario con rol **Administrador** puede entrar a este módulo.")
+        return
+    st.caption("Los usuarios viven en la memoria de este servidor mientras esté corriendo — no hay base de datos externa detrás. Si el servidor se reinicia, la lista vuelve a su estado inicial (solo el usuario admin).")
+
+    st.markdown("#### ➕ Agregar Usuario")
+    with st.form("form_nuevo_usuario", clear_on_submit=True):
+        cu1, cu2, cu3 = st.columns(3)
+        with cu1: nuevo_usuario_nombre = st.text_input("Usuario (sin espacios):")
+        with cu2: nuevo_usuario_pass = st.text_input("Contraseña:", type="password")
+        with cu3: nuevo_usuario_rol = st.selectbox("Rol:", ["Preparador", "Revisor", "Socio/Aprobador", "Administrador"])
+        crear = st.form_submit_button("Crear Usuario", type="primary", use_container_width=True)
+    if crear:
+        nombre_limpio = nuevo_usuario_nombre.strip()
+        if not nombre_limpio or " " in nombre_limpio:
+            st.error("El nombre de usuario no puede estar vacío ni contener espacios.")
+        elif nombre_limpio in st.session_state.usuarios_sistema:
+            st.error(f"El usuario '{nombre_limpio}' ya existe.")
+        elif len(nuevo_usuario_pass) < 6:
+            st.error("La contraseña debe tener al menos 6 caracteres.")
+        else:
+            salt, hash_val = _hash_password(nuevo_usuario_pass)
+            st.session_state.usuarios_sistema[nombre_limpio] = {
+                "salt": salt, "hash": hash_val, "rol": nuevo_usuario_rol, "bloqueado": False,
+                "creado": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "ultimo_acceso": None, "intentos_fallidos": 0,
+            }
+            registrar_evento("Gestión de Usuarios", f"Creó al usuario '{nombre_limpio}' con rol {nuevo_usuario_rol}")
+            st.success(f"Usuario '{nombre_limpio}' creado.")
+            st.rerun()
+
+    st.markdown("---")
+    st.markdown("#### 📋 Usuarios Registrados")
+    admins_activos = [u for u, info in st.session_state.usuarios_sistema.items() if info["rol"] == "Administrador" and not info["bloqueado"]]
+    for nombre_u, info_u in st.session_state.usuarios_sistema.items():
+        with st.container():
+            cu1, cu2, cu3, cu4, cu5 = st.columns([2, 1.5, 1.5, 1, 1])
+            with cu1:
+                etiqueta = f"**{nombre_u}**" + (" (tú)" if nombre_u == st.session_state.usuario_autenticado else "")
+                st.markdown(etiqueta)
+                st.caption(f"Creado: {info_u['creado']} · Último acceso: {info_u['ultimo_acceso'] or 'nunca'}")
+            with cu2:
+                st.markdown(info_u["rol"])
+            with cu3:
+                if info_u["bloqueado"]:
+                    st.markdown("🔴 Bloqueado")
+                else:
+                    st.markdown("🟢 Activo")
+            with cu4:
+                es_unico_admin = nombre_u in admins_activos and len(admins_activos) <= 1 and not info_u["bloqueado"]
+                if st.button("🔓" if info_u["bloqueado"] else "🔒", key=f"toggle_bloqueo_{nombre_u}", help="Bloquear/Desbloquear", disabled=es_unico_admin):
+                    st.session_state.usuarios_sistema[nombre_u]["bloqueado"] = not info_u["bloqueado"]
+                    if not st.session_state.usuarios_sistema[nombre_u]["bloqueado"]:
+                        st.session_state.usuarios_sistema[nombre_u]["intentos_fallidos"] = 0
+                    registrar_evento("Gestión de Usuarios", f"{'Bloqueó' if st.session_state.usuarios_sistema[nombre_u]['bloqueado'] else 'Desbloqueó'} al usuario '{nombre_u}'")
+                    st.rerun()
+                if es_unico_admin:
+                    st.caption("Único admin")
+            with cu5:
+                if st.button("🗑️", key=f"eliminar_usuario_{nombre_u}", help="Eliminar", disabled=(nombre_u == st.session_state.usuario_autenticado or es_unico_admin)):
+                    del st.session_state.usuarios_sistema[nombre_u]
+                    registrar_evento("Gestión de Usuarios", f"Eliminó al usuario '{nombre_u}'")
+                    st.rerun()
+            st.markdown("---")
+
+def render_ayuda():
     st.write("")
     st.markdown('<div class="section-header">❓ Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
     st.markdown('<div class="help-card"><div class="help-title">📊 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
@@ -1158,4 +1297,50 @@ with tab_ayuda:
     st.markdown('<div class="help-card"><div class="help-title">✅ 13. Revisión y Aprobación</div>Marca cada módulo como Preparado, Revisado o Aprobado, con responsable, comentario y fecha — deja constancia de quién validó cada parte del trabajo.</div>', unsafe_allow_html=True)
     st.markdown('<div class="help-card"><div class="help-title">📋 14. Checklist PBC</div>Lista editable de documentos solicitados al cliente, con responsable, fecha límite y estatus de recepción.</div>', unsafe_allow_html=True)
     st.markdown('<div class="help-card"><div class="help-title">📜 15. Bitácora de Auditoría</div>Registro cronológico de acciones (usuario, rol, módulo, acción y hora) de todo lo ejecutado en la sesión, exportable a Excel.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">👤 Panel Lateral: Usuario, Multiempresa y Notificaciones</div>Define tu nombre y rol de trabajo, guarda/alterna entre varias auditorías en la misma sesión, y revisa alertas de fechas límite, insumos faltantes o documentos PBC pendientes.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">👤 Panel Lateral: Sesión, Multiempresa y Notificaciones</div>Muestra tu usuario y rol autenticados, permite cerrar sesión, guardar/alternar entre varias auditorías en la misma sesión, y revisa alertas de fechas límite, insumos faltantes o documentos PBC pendientes.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="help-card"><div class="help-title">👥 16. Gestión de Usuarios (solo Administrador)</div>Agrega, bloquea/desbloquea y elimina usuarios del sistema. Requiere haber iniciado sesión con un usuario con rol Administrador.</div>', unsafe_allow_html=True)
+
+# ==============================================================================
+# 5. NAVEGACIÓN FINAL: PESTAÑAS AGRUPADAS POR CATEGORÍA
+# ==============================================================================
+# Se construye hasta aquí (y no arriba) porque necesita que todas las
+# funciones render_x() ya estén definidas. Agrupar por categoría, en vez de
+# una sola barra plana de 17 pestañas, evita que la navegación se desborde
+# visualmente y ayuda a que la app se sienta organizada por área de trabajo.
+CATEGORIAS = {
+    "📊 Panel General": [("📊 Dashboard", render_dashboard)],
+    "🔄 Conciliaciones": [
+        ("🏦 Bancos vs Auxiliar", render_bancos),
+        ("📄 XML vs Contabilidad", render_xml),
+        ("🧾 Clientes y Proveedores", render_saldos),
+        ("🌐 Multidivisa USD", render_multidivisa),
+        ("👔 Nómina CFDI", render_nomina),
+        ("📦 Inventarios", render_inventarios),
+        ("💸 IVA Flujo", render_iva),
+        ("🏭 Activo Fijo", render_activo_fijo),
+    ],
+    "📈 Análisis y Cumplimiento": [
+        ("📈 Razones Financieras", render_razones),
+        ("🏛️ Cumplimiento SAT", render_sat),
+    ],
+    "🛡️ Gobierno y Auditoría": [
+        ("✅ Revisión y Aprobación", render_aprobacion),
+        ("📋 Checklist PBC", render_pbc),
+        ("📜 Bitácora", render_bitacora),
+    ],
+    "⚙️ Sistema": [
+        ("⚙️ Configuración", render_configuracion),
+        ("👥 Gestión de Usuarios", render_gestion_usuarios),
+        ("❓ Ayuda", render_ayuda),
+    ],
+}
+
+st.markdown("---")
+categoria_activa = st.radio(
+    "Categoría:", list(CATEGORIAS.keys()), horizontal=True, label_visibility="collapsed", key="selector_categoria",
+)
+pestanas_categoria = CATEGORIAS[categoria_activa]
+objetos_tabs = st.tabs([nombre for nombre, _ in pestanas_categoria])
+for tab_obj, (_, funcion_render) in zip(objetos_tabs, pestanas_categoria):
+    with tab_obj:
+        funcion_render()
