@@ -24,6 +24,7 @@ st.set_page_config(
 # Inyección de estilos CSS para visualización ejecutiva e indicadores semafóricos
 st.markdown("""
     <style>
+    .stApp { background-color: #0D1117; }
     .main-title { font-size: 38px !important; font-weight: 700 !important; color: #00D4FF; margin-bottom: 5px; }
     .subtitle { font-size: 16px !important; color: #639FAB; margin-bottom: 30px; font-weight: 500; }
     .section-header { color: #00D4FF; font-weight: 600; border-bottom: 2px solid #161B22; padding-bottom: 10px; margin-bottom: 20px; font-size: 22px; }
@@ -35,27 +36,27 @@ st.markdown("""
     .help-title { color: #00D4FF; font-size: 18px; font-weight: 600; margin-bottom: 10px; }
     div.stButton > button:first-child[data-testid="stSidebarActionButton"] { background-color: #00D4FF !important; color: #0D1117 !important; font-weight: 700 !important; border: none !important; }
 
-    /* ---- Estilo Dashboard tipo BlackLine (tarjetas claras) ---- */
-    .bl-wrapper { background-color: #F4F5F7; padding: 24px; border-radius: 14px; }
-    .bl-card { background:#FFFFFF; border-radius:10px; padding:18px 20px; box-shadow:0 1px 3px rgba(16,24,40,0.08), 0 1px 2px rgba(16,24,40,0.04); border:1px solid #EEF0F2; height:100%; }
-    .bl-card-title { font-size:13px; color:#667085; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
-    .bl-card-value { font-size:32px; font-weight:700; color:#101828; line-height:1.1; }
-    .bl-card-sub { font-size:12px; color:#98A2B3; margin-top:2px; }
-    .bl-subrow { display:flex; justify-content:space-between; font-size:13px; color:#344054; margin-top:8px; padding-top:8px; border-top:1px solid #F2F4F7; }
+    /* ---- Estilo Dashboard tipo BlackLine (versión oscura) ---- */
+    .bl-wrapper { background-color: #0D1117; padding: 24px; border-radius: 14px; }
+    .bl-card { background:#161B22; border-radius:10px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25); border:1px solid #2A313C; height:100%; }
+    .bl-card-title { font-size:13px; color:#8B96A5; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+    .bl-card-value { font-size:32px; font-weight:700; color:#E6EDF3; line-height:1.1; }
+    .bl-card-sub { font-size:12px; color:#6E7887; margin-top:2px; }
+    .bl-subrow { display:flex; justify-content:space-between; font-size:13px; color:#C4CDD8; margin-top:8px; padding-top:8px; border-top:1px solid #2A313C; }
     .bl-badge { padding:1px 8px; border-radius:10px; font-size:11px; font-weight:700; margin-right:6px; }
-    .bl-badge-orange { background:#FFEAD5; color:#B93815; }
-    .bl-badge-blue { background:#E0EAFF; color:#3538CD; }
-    .bl-badge-green { background:#D1FADF; color:#05603A; }
-    .bl-badge-red { background:#FEE4E2; color:#B42318; }
-    .bl-section { background:#FFFFFF; border-radius:10px; padding:22px 24px; border:1px solid #EEF0F2; box-shadow:0 1px 3px rgba(16,24,40,0.06); }
-    .bl-section-title { font-size:15px; font-weight:700; color:#101828; }
-    .bl-count-pill { background:#EEF0F2; color:#344054; border-radius:12px; padding:1px 10px; font-size:12px; font-weight:700; margin-left:8px; }
+    .bl-badge-orange { background:#4A2E15; color:#FDBA74; }
+    .bl-badge-blue { background:#22284D; color:#A5B4FC; }
+    .bl-badge-green { background:#123425; color:#6EE7B7; }
+    .bl-badge-red { background:#43181A; color:#FCA5A5; }
+    .bl-section { background:#161B22; border-radius:10px; padding:22px 24px; border:1px solid #2A313C; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+    .bl-section-title { font-size:15px; font-weight:700; color:#E6EDF3; }
+    .bl-count-pill { background:#2A313C; color:#C4CDD8; border-radius:12px; padding:1px 10px; font-size:12px; font-weight:700; margin-left:8px; }
     .bl-progress-bar { display:flex; height:16px; border-radius:8px; overflow:hidden; width:100%; margin:16px 0 12px 0; }
-    .bl-legend { display:flex; flex-wrap:wrap; gap:18px; font-size:12.5px; color:#475467; }
+    .bl-legend { display:flex; flex-wrap:wrap; gap:18px; font-size:12.5px; color:#8B96A5; }
     .bl-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
-    .bl-mini-card { background:#FFFFFF; border-radius:10px; padding:16px 18px; border:1px solid #EEF0F2; border-top:3px solid #ccc; box-shadow:0 1px 3px rgba(16,24,40,0.05); }
-    .bl-mini-title { font-size:13px; color:#667085; font-weight:600; margin-bottom:6px; }
-    .bl-mini-value { font-size:24px; font-weight:700; color:#101828; }
+    .bl-mini-card { background:#161B22; border-radius:10px; padding:16px 18px; border:1px solid #2A313C; border-top:3px solid #444; box-shadow:0 1px 3px rgba(0,0,0,0.25); }
+    .bl-mini-title { font-size:13px; color:#8B96A5; font-weight:600; margin-bottom:6px; }
+    .bl-mini-value { font-size:24px; font-weight:700; color:#E6EDF3; }
     </style>
 """, unsafe_allow_html=True)
 
