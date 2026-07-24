@@ -59,6 +59,14 @@ st.markdown("""
     .bl-mini-card { background:#161B22; border-radius:10px; padding:16px 18px; border:1px solid #2A313C; border-top:3px solid #444; box-shadow:0 1px 3px rgba(0,0,0,0.25); }
     .bl-mini-title { font-size:13px; color:#8B96A5; font-weight:600; margin-bottom:6px; }
     .bl-mini-value { font-size:24px; font-weight:700; color:#E6EDF3; }
+
+    /* ---- Tarjetas contenedoras para TODAS las gráficas (fondo gris que las delimita) ---- */
+    div[class*="st-key-chartcard_"] {
+        background-color: #161B22 !important;
+        border: 1px solid #2A313C !important;
+        border-radius: 12px !important;
+        padding: 14px 10px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -151,7 +159,8 @@ variables_sesion = {
     'suma_conciliado': 0.0, 'suma_banco_p': 0.0, 'suma_aux_p': 0.0,
     'bancos_col_fecha_banco': None, 'bancos_col_fecha_aux': None, 'bancos_col_monto_banco': None, 'bancos_col_monto_aux': None,
     'bancos_clasificacion_pendientes': None,
-    'bancos_departamentos_colores': {"Cuentas por Cobrar": "#3B82F6", "Tesorería": "#8B5CF6", "Trainees": "#F59E0B", "Sin Asignar": "#6B7280"},
+    'bancos_departamentos_colores': {"Cuentas por Cobrar": "#10B981", "Tesorería": "#F97316", "Trainees": "#FF7F50", "Sin Asignar": "#6B7280"},
+    'bancos_departamento_manual': None,
     'df_xml_gastos': None, 'df_aux_gastos': None, 'xml_cargados': False, 'xml_ejecutado': False, 'xml_conciliados': None, 'xml_pend_xml': None, 'xml_pend_aux': None,
     'df_saldos_globales': None, 'df_facturas_detalle': None, 'saldos_cargados': False, 'saldos_ejecutado': False, 'saldos_conciliados': None, 'saldos_discrepancias': None,
     'df_divisa_ext': None, 'df_divisa_nac': None, 'divisa_cargados': False, 'divisa_ejecutado': False, 'divisa_conciliados': None, 'divisa_pend_ext': None, 'divisa_pend_nac': None, 'tc_auditoria_val': 17.50,
@@ -650,8 +659,9 @@ def render_dashboard():
             color_discrete_map={"No preparado": "#F79009", "En progreso": "#6172F3", "Completado": "#12B76A"},
             title="Estado por Módulo (filas de datos)",
         )
-        fig_modulos.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3", legend_title_text="")
-        st.plotly_chart(fig_modulos, use_container_width=True)
+        fig_modulos.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", legend_title_text="", height=380)
+        with st.container(key="chartcard_modulos", border=True):
+            st.plotly_chart(fig_modulos, use_container_width=True)
     with gcol2:
         df_dona = pd.DataFrame({
             "Estado": ["No preparado", "En progreso", "Completado"],
@@ -662,8 +672,9 @@ def render_dashboard():
             color="Estado", color_discrete_map={"No preparado": "#F79009", "En progreso": "#6172F3", "Completado": "#12B76A"},
             title="Módulos por Estado",
         )
-        fig_dona.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3")
-        st.plotly_chart(fig_dona, use_container_width=True)
+        fig_dona.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+        with st.container(key="chartcard_dona", border=True):
+            st.plotly_chart(fig_dona, use_container_width=True)
 
     # ---------- Debajo: semáforo de riesgo original + dictamen PDF ----------
     st.write("")
@@ -865,20 +876,27 @@ def render_bancos():
                 st.markdown("###### Vista con color por departamento")
                 st.dataframe(df_editado.style.apply(_color_fila, axis=1), use_container_width=True)
 
-                # ---------- Tarjetas por departamento ----------
+                # ---------- Tarjetas por departamento (clicables) ----------
                 resumen_dep = df_editado.groupby("Departamento").agg(Partidas=("_Monto_Norm", "count"), Monto_Total=("_Monto_Norm", "sum")).reset_index()
                 cols_tarjetas = st.columns(len(resumen_dep)) if len(resumen_dep) > 0 else []
                 for col, (_, fila) in zip(cols_tarjetas, resumen_dep.iterrows()):
-                    color = colores_dep.get(fila["Departamento"], "#6B7280")
+                    depto_tarjeta = fila["Departamento"]
+                    color = colores_dep.get(depto_tarjeta, "#6B7280")
+                    seleccionada = st.session_state.bancos_departamento_manual == depto_tarjeta
                     with col:
-                        st.markdown(f"""<div class="bl-mini-card" style="border-top-color:{color};">
-                            <div class="bl-mini-title">{fila['Departamento']}</div>
+                        sombra = f"box-shadow:0 0 0 2px {color};" if seleccionada else ""
+                        st.markdown(f"""<div class="bl-mini-card" style="border-top-color:{color}; {sombra}">
+                            <div class="bl-mini-title">{depto_tarjeta}</div>
                             <div class="bl-mini-value">{int(fila['Partidas'])} partidas</div>
                             <div class="bl-card-sub">$ {fila['Monto_Total']:,.2f}</div>
                         </div>""", unsafe_allow_html=True)
+                        etiqueta_btn = ":material/filter_list_off: Quitar filtro" if seleccionada else ":material/filter_list: Ver pendientes"
+                        if st.button(etiqueta_btn, key=f"filtro_tarjeta_{depto_tarjeta}", use_container_width=True):
+                            st.session_state.bancos_departamento_manual = None if seleccionada else depto_tarjeta
+                            st.rerun()
 
                 st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-                st.caption(":orange[:material/touch_app:] Haz clic sobre una barra, dona o segmento para ver el detalle de ese departamento.")
+                st.caption(":orange[:material/touch_app:] Haz clic en una tarjeta (botón 'Ver pendientes') o en una barra/dona/segmento para ver el detalle de ese departamento.")
 
                 # ---------- 4 gráficas clicables (custom_data lleva el Departamento) ----------
                 eventos = []
@@ -889,16 +907,18 @@ def render_bancos():
                         color_discrete_map=colores_dep, title="Monto Pendiente por Departamento",
                         custom_data=["Departamento"],
                     )
-                    fig_monto.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3", showlegend=False)
-                    eventos.append(st.plotly_chart(fig_monto, use_container_width=True, on_select="rerun", key="chart_monto_depto"))
+                    fig_monto.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", showlegend=False, height=380)
+                    with st.container(key="chartcard_monto_depto", border=True):
+                        eventos.append(st.plotly_chart(fig_monto, use_container_width=True, on_select="rerun", key="chart_monto_depto"))
                 with g2:
                     fig_partidas = px.pie(
                         resumen_dep, names="Departamento", values="Partidas", hole=0.55,
                         color="Departamento", color_discrete_map=colores_dep, title="Partidas Pendientes por Departamento",
                         custom_data=["Departamento"],
                     )
-                    fig_partidas.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3")
-                    eventos.append(st.plotly_chart(fig_partidas, use_container_width=True, on_select="rerun", key="chart_partidas_depto"))
+                    fig_partidas.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+                    with st.container(key="chartcard_partidas_depto", border=True):
+                        eventos.append(st.plotly_chart(fig_partidas, use_container_width=True, on_select="rerun", key="chart_partidas_depto"))
 
                 g3, g4 = st.columns(2)
                 with g3:
@@ -908,8 +928,9 @@ def render_bancos():
                         title="Pendientes Banco vs Auxiliar por Departamento",
                         custom_data=["Departamento"],
                     )
-                    fig_origen.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3")
-                    eventos.append(st.plotly_chart(fig_origen, use_container_width=True, on_select="rerun", key="chart_origen_depto"))
+                    fig_origen.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+                    with st.container(key="chartcard_origen_depto", border=True):
+                        eventos.append(st.plotly_chart(fig_origen, use_container_width=True, on_select="rerun", key="chart_origen_depto"))
                 with g4:
                     df_antiguedad = df_editado.dropna(subset=["_Fecha_Norm"]).copy()
                     if not df_antiguedad.empty:
@@ -923,12 +944,13 @@ def render_bancos():
                             color_discrete_map=colores_dep, title="Antigüedad de Pendientes por Departamento",
                             custom_data=["Departamento"],
                         )
-                        fig_antiguedad.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3")
-                        eventos.append(st.plotly_chart(fig_antiguedad, use_container_width=True, on_select="rerun", key="chart_antiguedad_depto"))
+                        fig_antiguedad.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+                        with st.container(key="chartcard_antiguedad_depto", border=True):
+                            eventos.append(st.plotly_chart(fig_antiguedad, use_container_width=True, on_select="rerun", key="chart_antiguedad_depto"))
                     else:
                         st.info(":blue[:material/info:] No hay fechas válidas para calcular antigüedad.")
 
-                # ---------- Drill-down: detectar clic en cualquiera de las 4 gráficas ----------
+                # ---------- Drill-down: combinar clic en tarjeta + clic en cualquiera de las 4 gráficas ----------
                 departamento_click = None
                 for evento in eventos:
                     puntos = evento.selection.get("points", []) if evento and getattr(evento, "selection", None) else []
@@ -938,15 +960,23 @@ def render_bancos():
                             departamento_click = customdata[0]
                             break
 
+                # El clic en una gráfica también fija el filtro manual (así ambos
+                # caminos quedan sincronizados y el botón de la tarjeta refleja
+                # el estado correcto en el siguiente rerun).
                 if departamento_click:
+                    st.session_state.bancos_departamento_manual = departamento_click
+
+                departamento_final = departamento_click or st.session_state.bancos_departamento_manual
+
+                if departamento_final:
                     st.markdown("---")
-                    color_sel = colores_dep.get(departamento_click, "#6B7280")
+                    color_sel = colores_dep.get(departamento_final, "#6B7280")
                     st.markdown(
                         f'<div class="section-header">{icono("clipboard")} Pendientes por Registrar — '
-                        f'<span style="color:{color_sel};">{departamento_click}</span></div>',
+                        f'<span style="color:{color_sel};">{departamento_final}</span></div>',
                         unsafe_allow_html=True,
                     )
-                    filtro = df_editado[df_editado["Departamento"] == departamento_click]
+                    filtro = df_editado[df_editado["Departamento"] == departamento_final]
                     filas_banco = filtro[filtro["Origen"] == "Banco"]
                     filas_aux = filtro[filtro["Origen"] == "Auxiliar"]
 
@@ -1376,8 +1406,9 @@ def render_razones():
 
         df_razones_graf = pd.DataFrame({"Razón": list(razones.keys()), "Valor": [v if v is not None else 0 for v in razones.values()]})
         fig_razones = px.bar(df_razones_graf, x="Valor", y="Razón", orientation="h", title="Razones Financieras del Periodo", color="Valor", color_continuous_scale="Tealgrn")
-        fig_razones.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3", showlegend=False, coloraxis_showscale=False)
-        st.plotly_chart(fig_razones, use_container_width=True)
+        fig_razones.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", showlegend=False, coloraxis_showscale=False, height=380)
+        with st.container(key="chartcard_razones", border=True):
+            st.plotly_chart(fig_razones, use_container_width=True)
     else:
         st.info(":orange[:material/lightbulb:] Captura al menos algunas cifras para ver las razones calculadas.")
 
