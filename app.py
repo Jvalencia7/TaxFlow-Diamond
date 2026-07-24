@@ -18,7 +18,7 @@ from reconciliation import conciliar_dos_fuentes
 # ==============================================================================
 st.set_page_config(
     page_title="TaxFlow-Diamond | Suite de Conciliación",
-    page_icon="💎",
+    page_icon=":material/diamond:",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -62,12 +62,65 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">💎 TaxFlow-Diamond</div>', unsafe_allow_html=True)
+# ==============================================================================
+# ICONOGRAFÍA CORPORATIVA: SVG de línea (estilo profesional monocromo) para
+# títulos con estilo propio, donde el shortcode :material/x: de Streamlit no
+# se renderiza dentro de unsafe_allow_html=True.
+# ==============================================================================
+_ICONOS_SVG = {
+    "diamond": '<path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M2 9h20"/><path d="M9 3l-3 6 6 12 6-12-3-6"/>',
+    "dashboard": '<rect x="3" y="12" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="13" rx="1"/><rect x="17" y="3" width="4" height="17" rx="1"/>',
+    "bank": '<path d="M3 21h18"/><path d="M5 21V10M10 21V10M14 21V10M19 21V10"/><path d="M12 3 2 9h20L12 3Z"/>',
+    "document": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8"/>',
+    "invoice": '<path d="M6 2h9l3 3v17H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+    "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9Z"/>',
+    "badge": '<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 18c.7-2.2 2.4-3.5 4.5-3.5s3.8 1.3 4.5 3.5"/>',
+    "box": '<path d="m3 8 9-5 9 5-9 5-9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    "cash": '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/>',
+    "factory": '<path d="M3 21V10l6 4v-4l6 4V6l6 4v11H3Z"/><path d="M7 21v-4M13 21v-4"/>',
+    "trending": '<path d="m3 17 6-6 4 4 8-8"/><path d="M17 7h4v4"/>',
+    "scale": '<path d="M12 3v18"/><path d="M5 7h14"/><path d="m5 7-3 7a3.5 3.5 0 0 0 6 0Z"/><path d="m19 7-3 7a3.5 3.5 0 0 0 6 0Z"/>',
+    "check": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+    "clipboard": '<rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9 2h6v4H9z"/><path d="M9 11h6M9 15h4"/>',
+    "book": '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5v13Z"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>',
+    "users": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    "gear": '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.65 1.65 0 0 0-1.8-.3 1.65 1.65 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.65 1.65 0 0 0-1-1.5 1.65 1.65 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.65 1.65 0 0 0 .3-1.8 1.65 1.65 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.65 1.65 0 0 0 1.5-1 1.65 1.65 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.65 1.65 0 0 0 1.8.3H9a1.65 1.65 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.65 1.65 0 0 0 1 1.5 1.65 1.65 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.65 1.65 0 0 0-.3 1.8V9a1.65 1.65 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.65 1.65 0 0 0-1.5 1Z"/>',
+    "help": '<circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+    "calendar": '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+}
+
+def icono(nombre, size=18, color="currentColor"):
+    """Devuelve un ícono SVG de línea (monocromo) para usar dentro de HTML con unsafe_allow_html=True."""
+    contenido_svg = _ICONOS_SVG.get(nombre, _ICONOS_SVG["check"])
+    return (f'<svg viewBox="0 0 24 24" width="{size}" height="{size}" fill="none" stroke="{color}" '
+            f'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
+            f'style="vertical-align:-3px;margin-right:8px;">{contenido_svg}</svg>')
+
+def punto(color, size=9):
+    """Punto de estado circular (para semáforos: rojo/amarillo/verde/naranja/azul)."""
+    return f'<span style="display:inline-block;width:{size}px;height:{size}px;border-radius:50%;background:{color};margin-right:7px;"></span>'
+
+
+st.markdown(f'<div class="main-title">{icono("diamond", 32)} TaxFlow-Diamond</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 # 2. SISTEMA DE MEMORIA INTEGRAL DEL WORKFLOW (SESSION STATE)
 # ==============================================================================
+# ==============================================================================
+# 1.4 LOGOTIPO INSTITUCIONAL POR DEFECTO
+# ==============================================================================
+# Se carga desde /assets/logo_default.jpg (empaquetado junto a app.py). Si el
+# usuario sube su propio logotipo en Configuración, ese reemplaza a este por
+# el resto de la sesión — la opción de cambiarlo sigue funcionando igual.
+_RUTA_LOGO_DEFECTO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo_default.jpg")
+try:
+    with open(_RUTA_LOGO_DEFECTO, "rb") as _archivo_logo:
+        _LOGO_DEFECTO_BYTES = _archivo_logo.read()
+except FileNotFoundError:
+    _LOGO_DEFECTO_BYTES = None
+
 variables_sesion = {
     'df_banco': None, 'df_auxiliar': None, 'bancos_cargados': False, 'bancos_ejecutado': False,
     'df_conciliados': None, 'bancos_pendientes': None, 'auxiliar_pendientes': None,
@@ -78,7 +131,7 @@ variables_sesion = {
     'df_cfdi_nomina': None, 'df_aux_nomina': None, 'nomina_cargados': False, 'nomina_ejecutado': False, 'nomina_conciliados': None, 'nomina_discrepancias': None, 'nomina_pend_cfdi': None, 'nomina_pend_aux': None,
     'df_inv_fisico': None, 'df_kardex_er': None, 'inventarios_cargados': False, 'inventarios_ejecutado': False, 'inventarios_conciliados': None, 'inventarios_discrepancias': None,
     'df_iva_banco': None, 'df_iva_aux': None, 'iva_cargados': False, 'iva_ejecutado': False, 'iva_conciliados': None, 'iva_discrepancias': None, 'iva_pend_banco': None, 'iva_pend_aux': None,
-    'fase_progreso': 1, 'empresa': "", 'periodo': "", 'auditor': "", 'tolerancia': 0.50, 'tolerancia_dias': 3, 'tolerancia_inventario': 1.0, 'divisa': "MXN ($)", 'logo_bytes': None, 'fecha_limite_cierre': None,
+    'fase_progreso': 1, 'empresa': "", 'periodo': "", 'auditor': "", 'tolerancia': 0.50, 'tolerancia_dias': 3, 'tolerancia_inventario': 1.0, 'divisa': "MXN ($)", 'logo_bytes': _LOGO_DEFECTO_BYTES, 'fecha_limite_cierre': None,
 
     # --- Módulos corporativos nuevos ---
     'usuario_actual': "", 'rol_actual': "Preparador",
@@ -128,9 +181,9 @@ if 'sesion_autenticada' not in st.session_state: st.session_state.sesion_autenti
 if 'usuario_autenticado' not in st.session_state: st.session_state.usuario_autenticado = None
 
 if not st.session_state.sesion_autenticada:
-    st.warning("🔑 Usuario por defecto: **admin** — Contraseña: **TaxFlow2026!** — cámbiala en cuanto entres desde '👥 Gestión de Usuarios'.")
+    st.warning(":material/key: Usuario por defecto: **admin** — Contraseña: **TaxFlow2026!** — cámbiala en cuanto entres desde ':material/group: Gestión de Usuarios'.")
     with st.form("form_login"):
-        st.markdown("### 🔒 Iniciar Sesión")
+        st.markdown("### :material/lock: Iniciar Sesión")
         usuario_input = st.text_input("Usuario:")
         password_input = st.text_input("Contraseña:", type="password")
         enviado = st.form_submit_button("Entrar", type="primary", use_container_width=True)
@@ -140,7 +193,7 @@ if not st.session_state.sesion_autenticada:
             st.error("Usuario o contraseña incorrectos.")
         elif registro_usuario["bloqueado"] or registro_usuario["intentos_fallidos"] >= 5:
             registro_usuario["bloqueado"] = True
-            st.error("🚫 Este usuario está bloqueado. Contacta a un Administrador.")
+            st.error(":material/block: Este usuario está bloqueado. Contacta a un Administrador.")
         elif _verificar_password(password_input, registro_usuario["salt"], registro_usuario["hash"]):
             st.session_state.sesion_autenticada = True
             st.session_state.usuario_autenticado = usuario_input
@@ -158,7 +211,7 @@ if not st.session_state.sesion_autenticada:
             registro_usuario["intentos_fallidos"] += 1
             if registro_usuario["intentos_fallidos"] >= 5:
                 registro_usuario["bloqueado"] = True
-                st.error("🚫 Demasiados intentos fallidos: este usuario quedó bloqueado automáticamente. Contacta a un Administrador.")
+                st.error(":material/block: Demasiados intentos fallidos: este usuario quedó bloqueado automáticamente. Contacta a un Administrador.")
             else:
                 st.error(f"Usuario o contraseña incorrectos. Intento {registro_usuario['intentos_fallidos']}/5 antes del bloqueo automático.")
     st.stop()
@@ -172,12 +225,12 @@ if not st.session_state.sesion_autenticada:
 # 4. PANEL LATERAL (IDENTIDAD CORPORATIVA FIJA Y UTILERÍAS)
 # ==============================================================================
 if st.session_state.logo_bytes is not None: st.sidebar.image(st.session_state.logo_bytes, use_container_width=True)
-else: st.sidebar.info("🏢 Sin Logotipo Institucional. Configúralo en la pestaña superior de Configuración.")
+else: st.sidebar.info(":material/apartment: Sin Logotipo Institucional. Configúralo en la pestaña superior de Configuración.")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 👤 Sesión Activa")
+st.sidebar.markdown("### :material/person: Sesión Activa")
 st.sidebar.success(f"**{st.session_state.usuario_autenticado}** ({st.session_state.rol_actual})")
-if st.sidebar.button("🔒 Cerrar Sesión", type="primary", use_container_width=True, key="sidebar_logout_btn"):
+if st.sidebar.button(":material/lock: Cerrar Sesión", type="primary", use_container_width=True, key="sidebar_logout_btn"):
     st.session_state.bitacora_eventos.append({
         "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Usuario": st.session_state.usuario_autenticado, "Rol": st.session_state.rol_actual,
@@ -189,13 +242,13 @@ if st.sidebar.button("🔒 Cerrar Sesión", type="primary", use_container_width=
     st.session_state.sesion_autenticada = False
     st.session_state.usuario_autenticado = None
     st.rerun()
-st.sidebar.caption("⚠️ Cerrar sesión también reinicia los datos de esta auditoría (bancos, XML, etc.) — descarga tu respaldo .JSON antes si quieres conservarlos.")
+st.sidebar.caption(":material/warning: Cerrar sesión también reinicia los datos de esta auditoría (bancos, XML, etc.) — descarga tu respaldo .JSON antes si quieres conservarlos.")
 
 st.sidebar.markdown("---")
-with st.sidebar.expander("🏢 Multiempresa (auditorías en esta sesión)"):
+with st.sidebar.expander(":material/apartment: Multiempresa (auditorías en esta sesión)"):
     st.caption("Guarda distintas auditorías en memoria para alternar entre clientes sin perder tu trabajo. Se pierden al cerrar el navegador o reiniciar el servidor — para conservarlas de forma permanente, descarga el respaldo .JSON de cada una desde Configuración.")
     nombre_nueva_auditoria = st.text_input("Nombre para guardar la auditoría actual:", key="nombre_snapshot")
-    if st.button("💾 Guardar auditoría actual", use_container_width=True, key="guardar_snapshot_btn"):
+    if st.button(":material/save: Guardar auditoría actual", use_container_width=True, key="guardar_snapshot_btn"):
         if nombre_nueva_auditoria.strip():
             snapshot = _serializar_estado({llave: st.session_state[llave] for llave in variables_sesion.keys()})
             st.session_state.auditorias_guardadas[nombre_nueva_auditoria.strip()] = snapshot
@@ -208,20 +261,20 @@ with st.sidebar.expander("🏢 Multiempresa (auditorías en esta sesión)"):
         auditoria_elegida = st.selectbox("Auditorías guardadas:", nombres_guardados, key="selector_snapshot")
         col_ae1, col_ae2 = st.columns(2)
         with col_ae1:
-            if st.button("📂 Cargar", use_container_width=True, key="cargar_snapshot_btn"):
+            if st.button(":material/folder_open: Cargar", use_container_width=True, key="cargar_snapshot_btn"):
                 for llave, valor in _deserializar_estado(st.session_state.auditorias_guardadas[auditoria_elegida]).items():
                     st.session_state[llave] = valor
                 registrar_evento("Multiempresa", f"Cargó la auditoría '{auditoria_elegida}'")
                 st.rerun()
         with col_ae2:
-            if st.button("🗑️ Eliminar", use_container_width=True, key="eliminar_snapshot_btn"):
+            if st.button(":material/delete: Eliminar", use_container_width=True, key="eliminar_snapshot_btn"):
                 del st.session_state.auditorias_guardadas[auditoria_elegida]
                 st.rerun()
     else:
         st.caption("Aún no hay auditorías guardadas.")
 
 st.sidebar.markdown("---")
-with st.sidebar.expander("🔔 Notificaciones", expanded=True):
+with st.sidebar.expander(":material/notifications: Notificaciones", expanded=True):
     _notificaciones = []
     if st.session_state.fecha_limite_cierre:
         try:
@@ -233,28 +286,28 @@ with st.sidebar.expander("🔔 Notificaciones", expanded=True):
             pass
     _modulos_sin_cargar = sum(1 for llave in ["bancos_cargados", "xml_cargados", "saldos_cargados", "divisa_cargados", "nomina_cargados", "inventarios_cargados", "iva_cargados"] if not st.session_state[llave])
     if _modulos_sin_cargar > 0:
-        _notificaciones.append(("info", f"📂 {_modulos_sin_cargar} módulo(s) de conciliación aún sin insumos cargados."))
+        _notificaciones.append(("info", f":material/folder_open: {_modulos_sin_cargar} módulo(s) de conciliación aún sin insumos cargados."))
     if st.session_state.pbc_checklist is not None and not st.session_state.pbc_checklist.empty:
         _pendientes_pbc = int((st.session_state.pbc_checklist["Estado"] == "Pendiente").sum())
-        if _pendientes_pbc > 0: _notificaciones.append(("warning", f"📋 {_pendientes_pbc} documento(s) del checklist PBC pendientes de recibir."))
+        if _pendientes_pbc > 0: _notificaciones.append(("warning", f":material/checklist: {_pendientes_pbc} documento(s) del checklist PBC pendientes de recibir."))
     if not _notificaciones:
-        st.caption("✅ Sin pendientes por ahora.")
+        st.caption(":material/check_circle: Sin pendientes por ahora.")
     else:
         for _tipo, _texto in _notificaciones:
             getattr(st, _tipo)(_texto)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📥 Descarga de Plantillas Corporativas")
+st.sidebar.markdown("### :material/download: Descarga de Plantillas Corporativas")
 buffer_p1 = io.BytesIO()
 with pd.ExcelWriter(buffer_p1, engine='openpyxl') as w: pd.DataFrame(columns=["Fecha", "Concepto", "Referencia", "Importe", "RFC_Contraparte"]).to_excel(w, index=False)
-st.sidebar.download_button("📊 Plantilla Estado de Cuenta", data=buffer_p1.getvalue(), file_name="Plantilla_Estado_Cuenta.xlsx", use_container_width=True)
+st.sidebar.download_button(":material/bar_chart: Plantilla Estado de Cuenta", data=buffer_p1.getvalue(), file_name="Plantilla_Estado_Cuenta.xlsx", use_container_width=True)
 
 buffer_p2 = io.BytesIO()
 with pd.ExcelWriter(buffer_p2, engine='openpyxl') as w: pd.DataFrame(columns=["Fecha_Poliza", "Cuenta_Contable", "Concepto_Movimiento", "Monto_Registro", "RFC_Validar"]).to_excel(w, index=False)
-st.sidebar.download_button("📖 Plantilla Auxiliar Contable", data=buffer_p2.getvalue(), file_name="Plantilla_Auxiliar_Contable.xlsx", use_container_width=True)
+st.sidebar.download_button(":material/menu_book: Plantilla Auxiliar Contable", data=buffer_p2.getvalue(), file_name="Plantilla_Auxiliar_Contable.xlsx", use_container_width=True)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🔍 Rastreador Rápido de Auditoría")
+st.sidebar.markdown("### :material/search: Rastreador Rápido de Auditoría")
 busqueda_rapida = st.sidebar.text_input("Ingresa monto o texto a rastrear:", placeholder="Ej. 15400.50 o Transferencia")
 
 def leer_archivo_contable(file):
@@ -413,34 +466,34 @@ def render_dashboard():
     with k1:
         valor_dias = f"{dias_restantes}" if dias_restantes is not None else "—"
         st.markdown(f"""<div class="bl-card">
-            <div class="bl-card-title">🗓️ Cierre de Periodo</div>
+            <div class="bl-card-title">{icono("calendar")} Cierre de Periodo</div>
             <div class="bl-card-value" style="color:{dias_color};">{valor_dias}</div>
             <div class="bl-card-sub">{dias_label}</div>
         </div>""", unsafe_allow_html=True)
     with k2:
         st.markdown(f"""<div class="bl-card">
-            <div class="bl-card-title">📋 Total</div>
+            <div class="bl-card-title">{icono("clipboard")} Total</div>
             <div class="bl-card-value">{rc['total']:,}</div>
             <div class="bl-subrow"><span>Recs</span><b>{rc['total']:,}</b></div>
             <div class="bl-subrow"><span>Módulos</span><b>{tk['total']}</b></div>
         </div>""", unsafe_allow_html=True)
     with k3:
         st.markdown(f"""<div class="bl-card">
-            <div class="bl-card-title">🟠 No preparado</div>
+            <div class="bl-card-title">{punto("#F79009")} No preparado</div>
             <div class="bl-card-value">{_pct(rc['no_prep'], rc['total']):.0f}% <span class="bl-card-sub">{rc['no_prep']:,}</span></div>
             <div class="bl-subrow"><span>Recs</span><span><span class="bl-badge bl-badge-orange">{_pct(rc['no_prep'], rc['total']):.0f}%</span>{rc['no_prep']:,}</span></div>
             <div class="bl-subrow"><span>Módulos</span><span><span class="bl-badge bl-badge-orange">{_pct(tk['no_prep'], tk['total']):.0f}%</span>{tk['no_prep']}</span></div>
         </div>""", unsafe_allow_html=True)
     with k4:
         st.markdown(f"""<div class="bl-card">
-            <div class="bl-card-title">🔵 En progreso</div>
+            <div class="bl-card-title">{punto("#6172F3")} En progreso</div>
             <div class="bl-card-value">{_pct(rc['progreso'], rc['total']):.0f}% <span class="bl-card-sub">{rc['progreso']:,}</span></div>
             <div class="bl-subrow"><span>Recs</span><span><span class="bl-badge bl-badge-blue">{_pct(rc['progreso'], rc['total']):.0f}%</span>{rc['progreso']:,}</span></div>
             <div class="bl-subrow"><span>Módulos</span><span><span class="bl-badge bl-badge-blue">{_pct(tk['progreso'], tk['total']):.0f}%</span>{tk['progreso']}</span></div>
         </div>""", unsafe_allow_html=True)
     with k5:
         st.markdown(f"""<div class="bl-card">
-            <div class="bl-card-title">✅ Completado</div>
+            <div class="bl-card-title">{icono("check")} Completado</div>
             <div class="bl-card-value">{_pct(rc['completado'], rc['total']):.0f}% <span class="bl-card-sub">{rc['completado']:,}</span></div>
             <div class="bl-subrow"><span>Recs</span><span><span class="bl-badge bl-badge-green">{_pct(rc['completado'], rc['total']):.0f}%</span>{rc['completado']:,}</span></div>
             <div class="bl-subrow"><span>Módulos</span><span><span class="bl-badge bl-badge-green">{_pct(tk['completado'], tk['total']):.0f}%</span>{tk['completado']}</span></div>
@@ -538,12 +591,12 @@ def render_dashboard():
     fases = ["1. Configuración", "2. Carga Insumos", "3. Mapeo Columnas", "4. Reportes y Dictamen"]
     st.progress(st.session_state.fase_progreso / 4, text=f"Progreso del Flujo: **{fases[st.session_state.fase_progreso - 1]}**")
     if st.session_state.bancos_ejecutado:
-        st.markdown('<div class="section-header">📊 Indicadores de Riesgo Corporativo</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-header">{icono("dashboard")} Indicadores de Riesgo Corporativo</div>', unsafe_allow_html=True)
         total_pendientes = st.session_state.suma_banco_p + st.session_state.suma_aux_p
         porcentaje_riesgo = (total_pendientes / st.session_state.suma_conciliado * 100) if st.session_state.suma_conciliado > 0 else 0
-        if porcentaje_riesgo <= 2.0: clase_semaforo, mensaje_semaforo = "kpi-green", "🟢 RIESGO BAJO: Libros Alineados."
-        elif porcentaje_riesgo <= 5.0: clase_semaforo, mensaje_semaforo = "kpi-yellow", "🟡 RIESGO MODERADO: Monitorear partidas."
-        else: clase_semaforo, mensaje_semaforo = "kpi-red", "🔴 ALERTA - RIESGO ALTO: Desfase crítico."
+        if porcentaje_riesgo <= 2.0: clase_semaforo, mensaje_semaforo = "kpi-green", f"{punto('#0D1117')}RIESGO BAJO: Libros Alineados."
+        elif porcentaje_riesgo <= 5.0: clase_semaforo, mensaje_semaforo = "kpi-yellow", f"{punto('#0D1117')}RIESGO MODERADO: Monitorear partidas."
+        else: clase_semaforo, mensaje_semaforo = "kpi-red", f"{punto('#0D1117')}ALERTA - RIESGO ALTO: Desfase crítico."
         st.markdown(f"<div class='kpi-card {clase_semaforo}'>{mensaje_semaforo} ({porcentaje_riesgo:.2f}% desfase)</div>", unsafe_allow_html=True)
         
         m1, m2, m3 = st.columns(3)
@@ -552,15 +605,15 @@ def render_dashboard():
         m3.metric("Pendientes Auxiliar", f"$ {st.session_state.suma_aux_p:,.2f}", delta_color="inverse")
         
         pdf_dictamen = generar_dictamen_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor, st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p)
-        st.download_button(label="📥 Descargar Dictamen Certificado (PDF)", data=pdf_dictamen, file_name="Dictamen_Auditoria.pdf", mime="application/pdf", use_container_width=True)
-    else: st.info("💎 Suite Inicializada. Usa los módulos superiores para comenzar la auditoría.")
+        st.download_button(label=":material/download: Descargar Dictamen Certificado (PDF)", data=pdf_dictamen, file_name="Dictamen_Auditoria.pdf", mime="application/pdf", use_container_width=True)
+    else: st.info(":material/diamond: Suite Inicializada. Usa los módulos superiores para comenzar la auditoría.")
 
 # ==============================================================================
 # CONFIGURACIÓN COMPLETA RESTAURADA CON BOTONES DE RESPALDO JSON
 # ==============================================================================
 def render_configuracion():
     st.write("")
-    st.markdown('<div class="section-header">⚙️ Panel de Parámetros Globales y Membretes</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("gear")} Panel de Parámetros Globales y Membretes</div>', unsafe_allow_html=True)
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1: st.session_state.empresa = st.text_input("Razón Social del Cliente:", value=st.session_state.empresa)
     with col_m2: st.session_state.periodo = st.text_input("Periodo Fiscal:", value=st.session_state.periodo)
@@ -588,22 +641,26 @@ def render_configuracion():
     if logo_file is not None:
         nuevos_bytes = logo_file.read()
         if st.session_state.logo_bytes != nuevos_bytes: st.session_state.logo_bytes = nuevos_bytes; st.session_state.fase_progreso = 2; st.rerun()
+    if _LOGO_DEFECTO_BYTES is not None and st.session_state.logo_bytes != _LOGO_DEFECTO_BYTES:
+        if st.button(":material/restart_alt: Restablecer al logo por defecto de TaxFlow-Diamond", key="restablecer_logo"):
+            st.session_state.logo_bytes = _LOGO_DEFECTO_BYTES
+            st.rerun()
 
     # RESPALDO JSON COMPLETO — sin excepción de ningún módulo
     st.markdown("---")
-    st.subheader("💾 Copias de Seguridad de la Auditoría (.JSON)")
+    st.subheader(":material/save: Copias de Seguridad de la Auditoría (.JSON)")
     st.caption("El respaldo incluye TODOS los módulos sin excepción: los 8 de conciliación (Bancos, XML, Saldos, Multidivisa, Nómina, Inventarios, IVA, Activo Fijo), Razones Financieras, Checklist SAT, Checklist PBC, Revisión y Aprobación, Bitácora de Auditoría, Configuración, auditorías guardadas (Multiempresa) y la base de Usuarios del sistema (incluye contraseñas cifradas).")
     col_j1, col_j2 = st.columns(2)
     with col_j1:
         llaves_respaldo_completo = list(variables_sesion.keys()) + ["usuarios_sistema"]
         respaldo_dinamico = _serializar_estado({llave: st.session_state[llave] for llave in llaves_respaldo_completo})
-        st.download_button(label="📥 Descargar Respaldo JSON Completo", data=json.dumps(respaldo_dinamico), file_name="Backup_TaxFlow.json", mime="application/json", use_container_width=True, on_click=lambda: registrar_evento("Configuración", "Descargó respaldo JSON completo (todos los módulos)"))
+        st.download_button(label=":material/download: Descargar Respaldo JSON Completo", data=json.dumps(respaldo_dinamico), file_name="Backup_TaxFlow.json", mime="application/json", use_container_width=True, on_click=lambda: registrar_evento("Configuración", "Descargó respaldo JSON completo (todos los módulos)"))
 
     with col_j2:
         archivo_json_cargado = st.file_uploader("Sube tu archivo de respaldo (.JSON)", type=["json"], key="json_config_uploader")
         restaurar_usuarios = st.checkbox("Restaurar también la base de Usuarios (usuarios, roles, contraseñas)", value=False, key="restaurar_usuarios_chk")
         if not restaurar_usuarios:
-            st.caption("⚠️ Por seguridad, restaurar usuarios está desmarcado por defecto — así no se sobreescribe accidentalmente tu lista de usuarios actual (incluyendo tu propia contraseña) al cargar un respaldo de otra auditoría.")
+            st.caption(":material/warning: Por seguridad, restaurar usuarios está desmarcado por defecto — así no se sobreescribe accidentalmente tu lista de usuarios actual (incluyendo tu propia contraseña) al cargar un respaldo de otra auditoría.")
         if archivo_json_cargado is not None:
             try:
                 datos_restaurados = json.load(archivo_json_cargado)
@@ -612,20 +669,20 @@ def render_configuracion():
                         continue
                     st.session_state[llave] = valor
                 registrar_evento("Configuración", f"Restauró la sesión desde un respaldo JSON (usuarios {'incluidos' if restaurar_usuarios else 'excluidos'})")
-                st.success("✓ Ecosistema restaurado desde el JSON con éxito.")
+                st.success(":material/check: Ecosistema restaurado desde el JSON con éxito.")
                 st.rerun()
             except Exception as e: st.error(f"Error JSON: {e}")
 def render_bancos():
     st.write("")
-    st.markdown('<div class="section-header">🏦 Módulo Bancario: Estado de Cuenta vs Auxiliar Contable Interno</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("bank")} Módulo Bancario: Estado de Cuenta vs Auxiliar Contable Interno</div>', unsafe_allow_html=True)
     if not st.session_state.bancos_cargados:
         c_b1, c_b2 = st.columns(2)
         with c_b1: b_file = st.file_uploader("Sube Estado de Cuenta Bancario", type=["csv", "xlsx"], key="b_u")
         with c_b2: a_file = st.file_uploader("Sube Auxiliar Contable", type=["csv", "xlsx"], key="a_u")
         if b_file and a_file: st.session_state.df_banco = leer_archivo_contable(b_file); st.session_state.df_auxiliar = leer_archivo_contable(a_file); st.session_state.bancos_cargados = True; st.session_state.fase_progreso = 3; st.rerun()
     else:
-        st.success("🏁 Insumos bancarios indexados.")
-        if st.button("🔄 Cargar nuevos archivos de banco", key="reset_b"): st.session_state.bancos_cargados, st.session_state.bancos_ejecutado = False, False; st.session_state.fase_progreso = 1; st.rerun()
+        st.success(":material/flag: Insumos bancarios indexados.")
+        if st.button(":material/refresh: Cargar nuevos archivos de banco", key="reset_b"): st.session_state.bancos_cargados, st.session_state.bancos_ejecutado = False, False; st.session_state.fase_progreso = 1; st.rerun()
     if st.session_state.bancos_cargados:
         df_b, df_a = st.session_state.df_banco, st.session_state.df_auxiliar
         c1, c2, c3, c4 = st.columns(4)
@@ -635,16 +692,16 @@ def render_bancos():
         with c4: ca_f = st.selectbox("Fecha AUXILIAR:", df_a.columns, key="ca_f")
         
         st.markdown("---")
-        st.subheader("🛡️ Panel de Pre-Validación de Insumos")
+        st.subheader(":material/shield: Panel de Pre-Validación de Insumos")
         col_v1, col_v2 = st.columns(2)
         with col_v1:
             col_rfc_b = st.selectbox("Columna de RFC en archivo BANCO (Opcional):", ["Ninguna"] + list(df_b.columns))
-            if col_rfc_b != "Ninguna" and not df_b[~df_b[col_rfc_b].apply(validar_rfc)].empty: st.warning("⚠️ RFCs inválidos en Banco.")
+            if col_rfc_b != "Ninguna" and not df_b[~df_b[col_rfc_b].apply(validar_rfc)].empty: st.warning(":material/warning: RFCs inválidos en Banco.")
         with col_v2:
             col_rfc_a = st.selectbox("Columna de RFC en archivo AUXILIAR (Opcional):", ["Ninguna"] + list(df_a.columns))
-            if col_rfc_a != "Ninguna" and not df_a[~df_a[col_rfc_a].apply(validar_rfc)].empty: st.warning("⚠️ RFCs inválidos en Auxiliar.")
+            if col_rfc_a != "Ninguna" and not df_a[~df_a[col_rfc_a].apply(validar_rfc)].empty: st.warning(":material/warning: RFCs inválidos en Auxiliar.")
 
-        if st.button("🚀 Ejecutar Algoritmo de Conciliación Diamond", type="primary", use_container_width=True):
+        if st.button(":material/play_arrow: Ejecutar Algoritmo de Conciliación Diamond", type="primary", use_container_width=True):
             try:
                 resultado = conciliar_dos_fuentes(
                     df_banco=df_b, df_auxiliar=df_a,
@@ -664,34 +721,34 @@ def render_bancos():
                 registrar_evento("Bancos vs Auxiliar", f"Ejecutó la conciliación ({resultado['resumen']['num_exactos']} exactos, {resultado['resumen']['num_aproximados']} aproximados, {resultado['resumen']['num_pendientes_banco']+resultado['resumen']['num_pendientes_auxiliar']} pendientes)")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ No se pudo ejecutar la conciliación. Revisa que las columnas de fecha y monto sean correctas. Detalle: {e}")
+                st.error(f":material/warning: No se pudo ejecutar la conciliación. Revisa que las columnas de fecha y monto sean correctas. Detalle: {e}")
         if st.session_state.bancos_ejecutado:
             if 'Tipo_Match' in st.session_state.df_conciliados.columns and not st.session_state.df_conciliados.empty:
                 n_exactos = int((st.session_state.df_conciliados['Tipo_Match'] == 'Exacto (fecha + monto)').sum())
                 n_aprox = int((st.session_state.df_conciliados['Tipo_Match'] == 'Aproximado (dentro de tolerancia)').sum())
-                st.caption(f"🔎 Trazabilidad: {n_exactos} partidas por match exacto (misma fecha y monto) · {n_aprox} por match aproximado (dentro de tolerancia). Cada partida se usa una sola vez, nunca se repite en ambos lados.")
+                st.caption(f":material/search: Trazabilidad: {n_exactos} partidas por match exacto (misma fecha y monto) · {n_aprox} por match aproximado (dentro de tolerancia). Cada partida se usa una sola vez, nunca se repite en ambos lados.")
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 st.session_state.df_conciliados.to_excel(writer, sheet_name='Partidas_Conciliadas', index=False)
                 st.session_state.bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
                 st.session_state.auxiliar_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
-            st.download_button(label="📥 Descargar Libro de Conciliación Completo (.XLSX)", data=buffer.getvalue(), file_name="Reporte_Bancos.xlsx", use_container_width=True)
-            tab1, tab2, tab3 = st.tabs(["✅ Conciliados", "⚠️ Solo Banco", "📖 Solo Auxiliar"])
+            st.download_button(label=":material/download: Descargar Libro de Conciliación Completo (.XLSX)", data=buffer.getvalue(), file_name="Reporte_Bancos.xlsx", use_container_width=True)
+            tab1, tab2, tab3 = st.tabs([":material/check_circle: Conciliados", ":material/warning: Solo Banco", ":material/menu_book: Solo Auxiliar"])
             with tab1: st.dataframe(st.session_state.df_conciliados, use_container_width=True)
             with tab2: st.dataframe(st.session_state.bancos_pendientes, use_container_width=True)
             with tab3: st.dataframe(st.session_state.auxiliar_pendientes, use_container_width=True)
 
 def render_xml():
     st.write("")
-    st.markdown('<div class="section-header">📄 Auditoría Fiscal: Comprobantes XML vs Auxiliar de Contabilidad</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("document")} Auditoría Fiscal: Comprobantes XML vs Auxiliar de Contabilidad</div>', unsafe_allow_html=True)
     if not st.session_state.xml_cargados:
         cx_1, cx_2 = st.columns(2)
         with cx_1: x_file = st.file_uploader("Sube Reporte de Facturas", type=["csv", "xlsx"], key="x_u")
         with cx_2: cg_file = st.file_uploader("Sube Auxiliar de Gastos", type=["csv", "xlsx"], key="cg_u")
         if x_file and cg_file: st.session_state.df_xml_gastos = leer_archivo_contable(x_file); st.session_state.df_aux_gastos = leer_archivo_contable(cg_file); st.session_state.xml_cargados = True; st.rerun()
     else:
-        st.success("🏁 Insumos de facturación indexados.")
-        if st.button("🔄 Cargar nuevos archivos de XML", key="reset_xml"): st.session_state.xml_cargados, st.session_state.xml_ejecutado = False, False; st.rerun()
+        st.success(":material/flag: Insumos de facturación indexados.")
+        if st.button(":material/refresh: Cargar nuevos archivos de XML", key="reset_xml"): st.session_state.xml_cargados, st.session_state.xml_ejecutado = False, False; st.rerun()
     if st.session_state.xml_cargados:
         df_xml, df_cg = st.session_state.df_xml_gastos, st.session_state.df_aux_gastos
         cx1, cx2, cx3, cx4 = st.columns(4)
@@ -699,7 +756,7 @@ def render_xml():
         with cx2: xml_f = st.selectbox("Fecha XML:", df_xml.columns, key="xml_f")
         with cx3: cont_m = st.selectbox("Monto Auxiliar Gasto:", df_cg.columns, key="cont_m")
         with cx4: cont_f = st.selectbox("Fecha Auxiliar Gasto:", df_cg.columns, key="cont_f")
-        if st.button("🚀 Cruce XML vs Contabilidad", type="primary", use_container_width=True):
+        if st.button(":material/play_arrow: Cruce XML vs Contabilidad", type="primary", use_container_width=True):
             try:
                 resultado = conciliar_dos_fuentes(
                     df_banco=df_xml, df_auxiliar=df_cg,
@@ -715,26 +772,26 @@ def render_xml():
                 registrar_evento("XML vs Contabilidad", f"Ejecutó el cruce ({len(resultado['conciliados'])} conciliadas, {len(resultado['pendientes_banco'])+len(resultado['pendientes_auxiliar'])} pendientes)")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ No se pudo cruzar XML vs Contabilidad. Revisa las columnas de fecha/monto. Detalle: {e}")
+                st.error(f":material/warning: No se pudo cruzar XML vs Contabilidad. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.xml_ejecutado:
             if 'Tipo_Match' in st.session_state.xml_conciliados.columns and not st.session_state.xml_conciliados.empty:
                 n_exactos = int((st.session_state.xml_conciliados['Tipo_Match'] == 'Exacto (fecha + monto)').sum())
                 n_aprox = int((st.session_state.xml_conciliados['Tipo_Match'] == 'Aproximado (dentro de tolerancia)').sum())
-                st.caption(f"🔎 Trazabilidad: {n_exactos} facturas por match exacto · {n_aprox} por match aproximado. Cada factura se usa una sola vez.")
+                st.caption(f":material/search: Trazabilidad: {n_exactos} facturas por match exacto · {n_aprox} por match aproximado. Cada factura se usa una sola vez.")
             buffer_xml = io.BytesIO()
             with pd.ExcelWriter(buffer_xml, engine='openpyxl') as writer:
                 st.session_state.xml_conciliados.to_excel(writer, sheet_name='Conciliados', index=False)
                 st.session_state.xml_pend_xml.to_excel(writer, sheet_name='Pendientes_Solo_XML', index=False)
                 st.session_state.xml_pend_aux.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
-            st.download_button(label="📥 Descargar Cruce XML vs Contabilidad (.XLSX)", data=buffer_xml.getvalue(), file_name="Reporte_XML.xlsx", use_container_width=True)
-            tx1, tx2, tx3 = st.tabs(["✅ Conciliados", "⚠️ Solo XML (posible omisión contable)", "📖 Solo Auxiliar (posible CFDI faltante)"])
+            st.download_button(label=":material/download: Descargar Cruce XML vs Contabilidad (.XLSX)", data=buffer_xml.getvalue(), file_name="Reporte_XML.xlsx", use_container_width=True)
+            tx1, tx2, tx3 = st.tabs([":material/check_circle: Conciliados", ":material/warning: Solo XML (posible omisión contable)", ":material/menu_book: Solo Auxiliar (posible CFDI faltante)"])
             with tx1: st.dataframe(st.session_state.xml_conciliados, use_container_width=True)
             with tx2: st.dataframe(st.session_state.xml_pend_xml, use_container_width=True)
             with tx3: st.dataframe(st.session_state.xml_pend_aux, use_container_width=True)
 
 def render_saldos():
     st.write("")
-    st.markdown('<div class="section-header">🧾 Herramienta de Auditoría de Cartera: Clientes y Proveedores</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("invoice")} Herramienta de Auditoría de Cartera: Clientes y Proveedores</div>', unsafe_allow_html=True)
     if not st.session_state.saldos_cargados:
         cs_1, cs_2 = st.columns(2)
         with cs_1: sg_file = st.file_uploader("Sube Reporte de Saldos Globales (ERP)", type=["csv", "xlsx"], key="sg_u_new")
@@ -743,7 +800,7 @@ def render_saldos():
     if st.session_state.saldos_cargados:
         df_sg, df_fd = st.session_state.df_saldos_globales, st.session_state.df_facturas_detalle
         col_s1, col_s2, col_s3 = st.columns(3); id_cte = st.selectbox("Columna Identificador (Código/RFC):", df_sg.columns, key="id_cte_new"); sg_m = st.selectbox("Monto Saldo Global Contable:", df_sg.columns, key="sg_m_new"); fd_m = st.selectbox("Monto Factura en Desglose:", df_fd.columns, key="fd_m_new")
-        if st.button("🚀 Ejecutar Cruce de Antigüedad de Saldos", type="primary", use_container_width=True):
+        if st.button(":material/play_arrow: Ejecutar Cruce de Antigüedad de Saldos", type="primary", use_container_width=True):
             df_sg_num = df_sg.copy()
             df_sg_num[sg_m] = pd.to_numeric(df_sg_num[sg_m], errors='coerce').fillna(0)
             # Agrupamos también el lado de saldos globales por cliente: si el ERP
@@ -764,12 +821,12 @@ def render_saldos():
             registrar_evento("Clientes y Proveedores", f"Ejecutó el cruce de antigüedad ({len(st.session_state.saldos_conciliados)} correctos, {len(st.session_state.saldos_discrepancias)} discrepancias)")
             st.rerun()
         if st.session_state.saldos_ejecutado:
-            t_s1, t_s2 = st.tabs(["✅ Saldos Correctos", "⚠️ Discrepancias Encontradas"])
+            t_s1, t_s2 = st.tabs([":material/check_circle: Saldos Correctos", ":material/warning: Discrepancias Encontradas"])
             with t_s1: st.dataframe(st.session_state.saldos_conciliados, use_container_width=True)
             with t_s2: st.dataframe(st.session_state.saldos_discrepancias, use_container_width=True)
 def render_multidivisa():
     st.write("")
-    st.markdown('<div class="section-header">🌐 Herramienta Cambiaria: Conciliación de Cuentas en Dólares (USD)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("globe")} Herramienta Cambiaria: Conciliación de Cuentas en Dólares (USD)</div>', unsafe_allow_html=True)
     st.session_state.tc_auditoria_val = st.number_input("Tipo de Cambio (TC) de Cierre Mensual:", min_value=1.0000, value=float(st.session_state.tc_auditoria_val), step=0.0100, key="tc_num_input")
     if not st.session_state.divisa_cargados:
         cv_1, cv_2 = st.columns(2)
@@ -777,8 +834,8 @@ def render_multidivisa():
         with cv_2: dn_file = st.file_uploader("Sube Registro en Moneda Nacional (Pólizas)", type=["csv", "xlsx"], key="dn_u_new")
         if de_file and dn_file: st.session_state.df_divisa_ext = leer_archivo_contable(de_file); st.session_state.df_divisa_nac = leer_archivo_contable(dn_file); st.session_state.divisa_cargados = True; st.rerun()
     else:
-        st.success("🏁 Papeles de divisas extranjeras indexados.")
-        if st.button("🔄 Reestablecer Módulo Multidivisa", key="reset_v_new"): st.session_state.divisa_cargados, st.session_state.divisa_ejecutado = False, False; st.rerun()
+        st.success(":material/flag: Papeles de divisas extranjeras indexados.")
+        if st.button(":material/refresh: Reestablecer Módulo Multidivisa", key="reset_v_new"): st.session_state.divisa_cargados, st.session_state.divisa_ejecutado = False, False; st.rerun()
     if st.session_state.divisa_cargados:
         df_ext, df_nac = st.session_state.df_divisa_ext, st.session_state.df_divisa_nac
         col_v1, col_v2, col_v3, col_v4 = st.columns(4)
@@ -787,7 +844,7 @@ def render_multidivisa():
         with col_v3: dn_m = st.selectbox("Monto en Moneda Nacional (MXN):", df_nac.columns, key="dn_m_new")
         with col_v4: dn_f = st.selectbox("Fecha (MXN):", df_nac.columns, key="dn_f_new")
         st.caption("ℹ️ El monto en USD se convierte primero a MXN con el tipo de cambio de arriba, y ESE valor convertido es el que se concilia contra tu registro en pesos (antes se comparaban los números crudos de ambas monedas, lo cual no tiene sentido matemático).")
-        if st.button("🚀 Calcular Fluctuación Cambiaria Analítica", type="primary", use_container_width=True):
+        if st.button(":material/play_arrow: Calcular Fluctuación Cambiaria Analítica", type="primary", use_container_width=True):
             try:
                 df_ext_c = df_ext.copy()
                 df_ext_c['Monto_Convertido_MXN'] = pd.to_numeric(df_ext_c[de_m], errors='coerce').fillna(0).abs() * float(st.session_state.tc_auditoria_val)
@@ -815,35 +872,35 @@ def render_multidivisa():
                 registrar_evento("Multidivisa USD", f"Calculó fluctuación cambiaria ({len(conciliados)} conciliadas, TC={st.session_state.tc_auditoria_val})")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ No se pudo calcular la fluctuación cambiaria. Revisa las columnas de fecha/monto. Detalle: {e}")
+                st.error(f":material/warning: No se pudo calcular la fluctuación cambiaria. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.divisa_ejecutado:
             tolerancia_cambiaria_mostrar = max(float(st.session_state.tolerancia), float(st.session_state.tc_auditoria_val) * 0.02)
             if 'Tipo_Match' in st.session_state.divisa_conciliados.columns and not st.session_state.divisa_conciliados.empty:
                 n_exactos = int((st.session_state.divisa_conciliados['Tipo_Match'] == 'Exacto (fecha + monto)').sum())
                 n_aprox = int((st.session_state.divisa_conciliados['Tipo_Match'] == 'Aproximado (dentro de tolerancia)').sum())
-                st.caption(f"🔎 Trazabilidad: {n_exactos} operaciones por match exacto · {n_aprox} por match aproximado (tolerancia cambiaria ± {tolerancia_cambiaria_mostrar:.2f} MXN).")
+                st.caption(f":material/search: Trazabilidad: {n_exactos} operaciones por match exacto · {n_aprox} por match aproximado (tolerancia cambiaria ± {tolerancia_cambiaria_mostrar:.2f} MXN).")
             buffer_div = io.BytesIO()
             with pd.ExcelWriter(buffer_div, engine='openpyxl') as writer:
                 st.session_state.divisa_conciliados.to_excel(writer, sheet_name='Conciliados', index=False)
                 st.session_state.divisa_pend_ext.to_excel(writer, sheet_name='Pendientes_Solo_USD', index=False)
                 st.session_state.divisa_pend_nac.to_excel(writer, sheet_name='Pendientes_Solo_MXN', index=False)
-            st.download_button(label="📥 Descargar Conciliación Cambiaria (.XLSX)", data=buffer_div.getvalue(), file_name="Reporte_Multidivisa.xlsx", use_container_width=True)
-            td1, td2, td3 = st.tabs(["✅ Conciliados", "⚠️ Solo USD", "📖 Solo MXN"])
+            st.download_button(label=":material/download: Descargar Conciliación Cambiaria (.XLSX)", data=buffer_div.getvalue(), file_name="Reporte_Multidivisa.xlsx", use_container_width=True)
+            td1, td2, td3 = st.tabs([":material/check_circle: Conciliados", ":material/warning: Solo USD", ":material/menu_book: Solo MXN"])
             with td1: st.dataframe(st.session_state.divisa_conciliados, use_container_width=True)
             with td2: st.dataframe(st.session_state.divisa_pend_ext, use_container_width=True)
             with td3: st.dataframe(st.session_state.divisa_pend_nac, use_container_width=True)
 
 def render_nomina():
     st.write("")
-    st.markdown('<div class="section-header">👔 Auditoría de Nómina: CFDI Timbrados vs Auxiliar</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("badge")} Auditoría de Nómina: CFDI Timbrados vs Auxiliar</div>', unsafe_allow_html=True)
     if not st.session_state.nomina_cargados:
         cn_1, cn_2 = st.columns(2)
         with cn_1: n_xml = st.file_uploader("Sube XML Nómina", type=["csv", "xlsx"], key="nx")
         with cn_2: n_aux = st.file_uploader("Sube Auxiliar Sueldos", type=["csv", "xlsx"], key="na")
         if n_xml and n_aux: st.session_state.df_cfdi_nomina = leer_archivo_contable(n_xml); st.session_state.df_aux_nomina = leer_archivo_contable(n_aux); st.session_state.nomina_cargados = True; st.rerun()
     else:
-        st.success("🏁 Insumos de nómina indexados.")
-        if st.button("🔄 Cargar nuevos archivos de nómina", key="reset_n"): st.session_state.nomina_cargados, st.session_state.nomina_ejecutado = False, False; st.rerun()
+        st.success(":material/flag: Insumos de nómina indexados.")
+        if st.button(":material/refresh: Cargar nuevos archivos de nómina", key="reset_n"): st.session_state.nomina_cargados, st.session_state.nomina_ejecutado = False, False; st.rerun()
     if st.session_state.nomina_cargados:
         df_nx, df_na = st.session_state.df_cfdi_nomina, st.session_state.df_aux_nomina
         cn1, cn2, cn3, cn4 = st.columns(4)
@@ -851,7 +908,7 @@ def render_nomina():
         with cn2: nx_f = st.selectbox("Fecha CFDI:", df_nx.columns, key="nx_f")
         with cn3: na_m = st.selectbox("Monto Libros:", df_na.columns, key="na_m")
         with cn4: na_f = st.selectbox("Fecha Libros:", df_na.columns, key="na_f")
-        if st.button("🚀 Conciliar Nóminas", type="primary", use_container_width=True):
+        if st.button(":material/play_arrow: Conciliar Nóminas", type="primary", use_container_width=True):
             try:
                 resultado = conciliar_dos_fuentes(
                     df_banco=df_nx, df_auxiliar=df_na,
@@ -867,41 +924,41 @@ def render_nomina():
                 registrar_evento("Nómina CFDI", f"Conciló nómina ({len(resultado['conciliados'])} recibos conciliados)")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ No se pudo conciliar la nómina. Revisa las columnas de fecha/monto. Detalle: {e}")
+                st.error(f":material/warning: No se pudo conciliar la nómina. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.nomina_ejecutado:
             if 'Tipo_Match' in st.session_state.nomina_conciliados.columns and not st.session_state.nomina_conciliados.empty:
                 n_exactos = int((st.session_state.nomina_conciliados['Tipo_Match'] == 'Exacto (fecha + monto)').sum())
                 n_aprox = int((st.session_state.nomina_conciliados['Tipo_Match'] == 'Aproximado (dentro de tolerancia)').sum())
-                st.caption(f"🔎 Trazabilidad: {n_exactos} recibos por match exacto · {n_aprox} por match aproximado. Cada recibo se usa una sola vez.")
+                st.caption(f":material/search: Trazabilidad: {n_exactos} recibos por match exacto · {n_aprox} por match aproximado. Cada recibo se usa una sola vez.")
             buffer_n = io.BytesIO()
             with pd.ExcelWriter(buffer_n, engine='openpyxl') as writer:
                 st.session_state.nomina_conciliados.to_excel(writer, sheet_name='Conciliados', index=False)
                 st.session_state.nomina_pend_cfdi.to_excel(writer, sheet_name='Pendientes_Solo_CFDI', index=False)
                 st.session_state.nomina_pend_aux.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
-            st.download_button(label="📥 Descargar Conciliación de Nómina (.XLSX)", data=buffer_n.getvalue(), file_name="Reporte_Nomina.xlsx", use_container_width=True)
-            tn1, tn2, tn3 = st.tabs(["✅ Conciliados", "⚠️ Solo CFDI", "📖 Solo Auxiliar"])
+            st.download_button(label=":material/download: Descargar Conciliación de Nómina (.XLSX)", data=buffer_n.getvalue(), file_name="Reporte_Nomina.xlsx", use_container_width=True)
+            tn1, tn2, tn3 = st.tabs([":material/check_circle: Conciliados", ":material/warning: Solo CFDI", ":material/menu_book: Solo Auxiliar"])
             with tn1: st.dataframe(st.session_state.nomina_conciliados, use_container_width=True)
             with tn2: st.dataframe(st.session_state.nomina_pend_cfdi, use_container_width=True)
             with tn3: st.dataframe(st.session_state.nomina_pend_aux, use_container_width=True)
 
 def render_inventarios():
     st.write("")
-    st.markdown('<div class="section-header">📦 Inventarios Físicos vs Almacén ERP</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("box")} Inventarios Físicos vs Almacén ERP</div>', unsafe_allow_html=True)
     if not st.session_state.inventarios_cargados:
         ci_1, ci_2 = st.columns(2)
         with ci_1: inf = st.file_uploader("Conteo Físico Real", type=["csv", "xlsx"], key="inf")
         with ci_2: ke = st.file_uploader("Kárdex Teórico Contable", type=["csv", "xlsx"], key="ke")
         if inf and ke: st.session_state.df_inv_fisico = leer_archivo_contable(inf); st.session_state.df_kardex_er = leer_archivo_contable(ke); st.session_state.inventarios_cargados = True; st.rerun()
     else:
-        st.success("🏁 Insumos de inventario indexados.")
-        if st.button("🔄 Cargar nuevos archivos de inventario", key="reset_inv"): st.session_state.inventarios_cargados, st.session_state.inventarios_ejecutado = False, False; st.rerun()
+        st.success(":material/flag: Insumos de inventario indexados.")
+        if st.button(":material/refresh: Cargar nuevos archivos de inventario", key="reset_inv"): st.session_state.inventarios_cargados, st.session_state.inventarios_ejecutado = False, False; st.rerun()
     if st.session_state.inventarios_cargados:
         df_inf, df_ke = st.session_state.df_inv_fisico, st.session_state.df_kardex_er
         cli1, cli2, cli3 = st.columns(3)
         with cli1: id_prod = st.selectbox("SKU/Código:", df_inf.columns, key="id_p")
         with cli2: if_q = st.selectbox("Cant Física:", df_inf.columns, key="if_q")
         with cli3: ke_q = st.selectbox("Cant ERP:", df_ke.columns, key="ke_q")
-        if st.button("🚀 Auditar Almacenes", type="primary", use_container_width=True):
+        if st.button(":material/play_arrow: Auditar Almacenes", type="primary", use_container_width=True):
             try:
                 df_inf_c = df_inf.copy()
                 df_ke_c = df_ke.copy()
@@ -922,29 +979,29 @@ def render_inventarios():
                 registrar_evento("Inventarios", f"Auditó almacenes ({len(st.session_state.inventarios_conciliados)} SKUs correctos, {len(st.session_state.inventarios_discrepancias)} discrepancias)")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ No se pudo auditar el almacén. Detalle: {e}")
+                st.error(f":material/warning: No se pudo auditar el almacén. Detalle: {e}")
         if st.session_state.inventarios_ejecutado:
-            st.caption(f"🔎 Tolerancia aplicada: ± {st.session_state.tolerancia_inventario:g} unidades por SKU (ajustable en Configuración).")
+            st.caption(f":material/search: Tolerancia aplicada: ± {st.session_state.tolerancia_inventario:g} unidades por SKU (ajustable en Configuración).")
             buffer_inv = io.BytesIO()
             with pd.ExcelWriter(buffer_inv, engine='openpyxl') as writer:
                 st.session_state.inventarios_conciliados.to_excel(writer, sheet_name='SKUs_Correctos', index=False)
                 st.session_state.inventarios_discrepancias.to_excel(writer, sheet_name='Discrepancias', index=False)
-            st.download_button(label="📥 Descargar Auditoría de Inventarios (.XLSX)", data=buffer_inv.getvalue(), file_name="Reporte_Inventarios.xlsx", use_container_width=True)
-            ti1, ti2 = st.tabs(["✅ SKUs Correctos", "⚠️ Discrepancias Encontradas"])
+            st.download_button(label=":material/download: Descargar Auditoría de Inventarios (.XLSX)", data=buffer_inv.getvalue(), file_name="Reporte_Inventarios.xlsx", use_container_width=True)
+            ti1, ti2 = st.tabs([":material/check_circle: SKUs Correctos", ":material/warning: Discrepancias Encontradas"])
             with ti1: st.dataframe(st.session_state.inventarios_conciliados, use_container_width=True)
             with ti2: st.dataframe(st.session_state.inventarios_discrepancias, use_container_width=True)
 
 def render_iva():
     st.write("")
-    st.markdown('<div class="section-header">💸 IVA Efectivamente Cobrado / Pagado (Flujo de Efectivo)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("cash")} IVA Efectivamente Cobrado / Pagado (Flujo de Efectivo)</div>', unsafe_allow_html=True)
     if not st.session_state.iva_cargados:
         civ_1, civ_2 = st.columns(2)
         with civ_1: iv_b = st.file_uploader("Flujo Bancos con IVA", type=["csv", "xlsx"], key="iv_b")
         with civ_2: iv_a = st.file_uploader("Determinación Mensual IVA", type=["csv", "xlsx"], key="iv_a")
         if iv_b and iv_a: st.session_state.df_iva_banco = leer_archivo_contable(iv_b); st.session_state.df_iva_aux = leer_archivo_contable(iv_a); st.session_state.iva_cargados = True; st.rerun()
     else:
-        st.success("🏁 Insumos de IVA indexados.")
-        if st.button("🔄 Cargar nuevos archivos de IVA", key="reset_iva"): st.session_state.iva_cargados, st.session_state.iva_ejecutado = False, False; st.rerun()
+        st.success(":material/flag: Insumos de IVA indexados.")
+        if st.button(":material/refresh: Cargar nuevos archivos de IVA", key="reset_iva"): st.session_state.iva_cargados, st.session_state.iva_ejecutado = False, False; st.rerun()
     if st.session_state.iva_cargados:
         df_ivb, df_iva = st.session_state.df_iva_banco, st.session_state.df_iva_aux
         civ1, civ2, civ3, civ4 = st.columns(4)
@@ -952,7 +1009,7 @@ def render_iva():
         with civ2: ib_f = st.selectbox("Fecha Banco:", df_ivb.columns, key="ib_f")
         with civ3: ia_m = st.selectbox("Importe Papel IVA:", df_iva.columns, key="ia_m")
         with civ4: ia_f = st.selectbox("Fecha Papel IVA:", df_iva.columns, key="ia_f")
-        if st.button("🚀 Amarre IVA Flujo", type="primary", use_container_width=True):
+        if st.button(":material/play_arrow: Amarre IVA Flujo", type="primary", use_container_width=True):
             try:
                 resultado = conciliar_dos_fuentes(
                     df_banco=df_ivb, df_auxiliar=df_iva,
@@ -968,33 +1025,33 @@ def render_iva():
                 registrar_evento("IVA Flujo", f"Amarró IVA ({len(resultado['conciliados'])} partidas conciliadas)")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ No se pudo amarrar el IVA. Revisa las columnas de fecha/monto. Detalle: {e}")
+                st.error(f":material/warning: No se pudo amarrar el IVA. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.iva_ejecutado:
             if 'Tipo_Match' in st.session_state.iva_conciliados.columns and not st.session_state.iva_conciliados.empty:
                 n_exactos = int((st.session_state.iva_conciliados['Tipo_Match'] == 'Exacto (fecha + monto)').sum())
                 n_aprox = int((st.session_state.iva_conciliados['Tipo_Match'] == 'Aproximado (dentro de tolerancia)').sum())
-                st.caption(f"🔎 Trazabilidad: {n_exactos} partidas por match exacto · {n_aprox} por match aproximado. Cada partida se usa una sola vez.")
+                st.caption(f":material/search: Trazabilidad: {n_exactos} partidas por match exacto · {n_aprox} por match aproximado. Cada partida se usa una sola vez.")
             buffer_iva = io.BytesIO()
             with pd.ExcelWriter(buffer_iva, engine='openpyxl') as writer:
                 st.session_state.iva_conciliados.to_excel(writer, sheet_name='Conciliados', index=False)
                 st.session_state.iva_pend_banco.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
                 st.session_state.iva_pend_aux.to_excel(writer, sheet_name='Pendientes_Solo_Papel_IVA', index=False)
-            st.download_button(label="📥 Descargar Amarre de IVA (.XLSX)", data=buffer_iva.getvalue(), file_name="Reporte_IVA.xlsx", use_container_width=True)
-            tiv1, tiv2, tiv3 = st.tabs(["✅ Conciliados", "⚠️ Solo Banco", "📖 Solo Papel IVA"])
+            st.download_button(label=":material/download: Descargar Amarre de IVA (.XLSX)", data=buffer_iva.getvalue(), file_name="Reporte_IVA.xlsx", use_container_width=True)
+            tiv1, tiv2, tiv3 = st.tabs([":material/check_circle: Conciliados", ":material/warning: Solo Banco", ":material/menu_book: Solo Papel IVA"])
             with tiv1: st.dataframe(st.session_state.iva_conciliados, use_container_width=True)
             with tiv2: st.dataframe(st.session_state.iva_pend_banco, use_container_width=True)
             with tiv3: st.dataframe(st.session_state.iva_pend_aux, use_container_width=True)
 
 def render_activo_fijo():
     st.write("")
-    st.markdown('<div class="section-header">🏭 Activo Fijo: Depreciación Esperada vs Registrada</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("factory")} Activo Fijo: Depreciación Esperada vs Registrada</div>', unsafe_allow_html=True)
     st.caption("A diferencia de los demás módulos, aquí se sube UN solo archivo (el kárdex de activos fijos ya trae el valor original y la depreciación acumulada contable en la misma fila).")
     if not st.session_state.af_cargados:
         af_file = st.file_uploader("Sube el Kárdex de Activos Fijos", type=["csv", "xlsx"], key="af_u")
         if af_file: st.session_state.df_af_kardex = leer_archivo_contable(af_file); st.session_state.af_cargados = True; st.rerun()
     else:
-        st.success("🏁 Kárdex de activos fijos indexado.")
-        if st.button("🔄 Cargar nuevo kárdex de activos", key="reset_af"): st.session_state.af_cargados, st.session_state.af_ejecutado = False, False; st.rerun()
+        st.success(":material/flag: Kárdex de activos fijos indexado.")
+        if st.button(":material/refresh: Cargar nuevo kárdex de activos", key="reset_af"): st.session_state.af_cargados, st.session_state.af_ejecutado = False, False; st.rerun()
     if st.session_state.af_cargados:
         df_af = st.session_state.df_af_kardex
         caf1, caf2, caf3, caf4 = st.columns(4)
@@ -1005,8 +1062,8 @@ def render_activo_fijo():
         af_dep_contable = st.selectbox("Depreciación Acumulada Contable (registrada en libros):", df_af.columns, key="af_dep_contable")
         fecha_corte_str = st.session_state.fecha_limite_cierre
         fecha_corte = datetime.date.fromisoformat(fecha_corte_str) if fecha_corte_str else datetime.date.today()
-        st.caption(f"📅 Fecha de corte usada para el cálculo: {fecha_corte.strftime('%d/%m/%Y')} (toma la Fecha Límite de Cierre configurada; si no hay una, usa hoy).")
-        if st.button("🚀 Calcular Depreciación Esperada", type="primary", use_container_width=True):
+        st.caption(f":material/calendar_month: Fecha de corte usada para el cálculo: {fecha_corte.strftime('%d/%m/%Y')} (toma la Fecha Límite de Cierre configurada; si no hay una, usa hoy).")
+        if st.button(":material/play_arrow: Calcular Depreciación Esperada", type="primary", use_container_width=True):
             try:
                 df_c = df_af.copy()
                 df_c['Valor_Original_Num'] = pd.to_numeric(df_c[af_valor], errors='coerce').fillna(0)
@@ -1032,20 +1089,20 @@ def render_activo_fijo():
                 registrar_evento("Activo Fijo", f"Calculó depreciación esperada ({len(st.session_state.af_conciliados)} correctos, {len(st.session_state.af_discrepancias)} discrepancias)")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ No se pudo calcular la depreciación. Revisa que las columnas de valor, fecha y vida útil sean correctas. Detalle: {e}")
+                st.error(f":material/warning: No se pudo calcular la depreciación. Revisa que las columnas de valor, fecha y vida útil sean correctas. Detalle: {e}")
         if st.session_state.af_ejecutado:
             buffer_af = io.BytesIO()
             with pd.ExcelWriter(buffer_af, engine='openpyxl') as writer:
                 st.session_state.af_conciliados.to_excel(writer, sheet_name='Activos_Correctos', index=False)
                 st.session_state.af_discrepancias.to_excel(writer, sheet_name='Discrepancias', index=False)
-            st.download_button(label="📥 Descargar Auditoría de Activo Fijo (.XLSX)", data=buffer_af.getvalue(), file_name="Reporte_Activo_Fijo.xlsx", use_container_width=True)
-            taf1, taf2 = st.tabs(["✅ Activos Correctos", "⚠️ Discrepancias Encontradas"])
+            st.download_button(label=":material/download: Descargar Auditoría de Activo Fijo (.XLSX)", data=buffer_af.getvalue(), file_name="Reporte_Activo_Fijo.xlsx", use_container_width=True)
+            taf1, taf2 = st.tabs([":material/check_circle: Activos Correctos", ":material/warning: Discrepancias Encontradas"])
             with taf1: st.dataframe(st.session_state.af_conciliados, use_container_width=True)
             with taf2: st.dataframe(st.session_state.af_discrepancias, use_container_width=True)
 
 def render_razones():
     st.write("")
-    st.markdown('<div class="section-header">📈 Análisis de Razones Financieras</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("trending")} Análisis de Razones Financieras</div>', unsafe_allow_html=True)
     st.caption("Captura las cifras del periodo (de tu Balance General y Estado de Resultados) para calcular las razones financieras estándar. Se guardan automáticamente en esta sesión.")
     rf = st.session_state.rf_datos
     cr1, cr2 = st.columns(2)
@@ -1094,11 +1151,11 @@ def render_razones():
         fig_razones.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117", font_color="#E6EDF3", showlegend=False, coloraxis_showscale=False)
         st.plotly_chart(fig_razones, use_container_width=True)
     else:
-        st.info("💡 Captura al menos algunas cifras para ver las razones calculadas.")
+        st.info(":material/lightbulb: Captura al menos algunas cifras para ver las razones calculadas.")
 
 def render_sat():
     st.write("")
-    st.markdown('<div class="section-header">🏛️ Checklist de Cumplimiento SAT</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("scale")} Checklist de Cumplimiento SAT</div>', unsafe_allow_html=True)
     st.caption("Esto es un rastreador de estatus de obligaciones (qué se presentó, cuándo, con qué acuse), NO un calculador de impuestos — los montos e ISR/IVA a pagar se calculan en tu sistema contable o con tu asesor fiscal; aquí solo llevas el control de cumplimiento.")
     if st.session_state.sat_checklist is None:
         st.session_state.sat_checklist = pd.DataFrame([
@@ -1119,23 +1176,23 @@ def render_sat():
         },
         key="sat_editor",
     )
-    if st.button("💾 Guardar Checklist SAT", use_container_width=True, key="guardar_sat"):
+    if st.button(":material/save: Guardar Checklist SAT", use_container_width=True, key="guardar_sat"):
         st.session_state.sat_checklist = df_sat_editado
         registrar_evento("Cumplimiento SAT", "Actualizó el checklist de obligaciones fiscales")
         st.success("Checklist guardado.")
     vencidas = df_sat_editado[(df_sat_editado["Estado"] == "Pendiente") & (pd.to_datetime(df_sat_editado["Fecha_Límite"], errors='coerce') < pd.Timestamp(datetime.date.today()))]
     if not vencidas.empty:
-        st.error(f"⚠️ {len(vencidas)} obligación(es) con fecha límite vencida y aún marcadas como 'Pendiente'.")
+        st.error(f":material/warning: {len(vencidas)} obligación(es) con fecha límite vencida y aún marcadas como 'Pendiente'.")
 
 def render_aprobacion():
     st.write("")
-    st.markdown('<div class="section-header">✅ Flujo de Revisión y Aprobación</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("check")} Flujo de Revisión y Aprobación</div>', unsafe_allow_html=True)
     st.caption("Deja constancia de quién preparó, revisó y aprobó cada módulo. El rol de tu usuario autenticado determina qué acciones tienen sentido para ti (ver panel lateral).")
     estado_modulos_actual = calcular_estado_modulos()
     for modulo_info in estado_modulos_actual["modulos"]:
         nombre_mod = modulo_info["nombre"]
         estado_actual = st.session_state.estado_revision.get(nombre_mod, {"estado": "Preparado", "revisor": "", "fecha": "", "comentario": ""})
-        with st.expander(f"{'✅' if modulo_info['ejecutado'] else ('🔵' if modulo_info['cargado'] else '🟠')} {nombre_mod}", expanded=False):
+        with st.expander(f"{':material/check_circle:' if modulo_info['ejecutado'] else (':material/autorenew:' if modulo_info['cargado'] else ':material/pending:')} {nombre_mod}", expanded=False):
             ca1, ca2, ca3 = st.columns([1, 1, 2])
             with ca1:
                 opciones_estado = ["Preparado", "Revisado", "Aprobado"]
@@ -1145,8 +1202,8 @@ def render_aprobacion():
             with ca3:
                 nuevo_comentario = st.text_input("Comentario:", value=estado_actual["comentario"], key=f"comentario_{nombre_mod}")
             if nuevo_estado == "Aprobado" and st.session_state.rol_actual == "Preparador":
-                st.warning("💡 Tu rol actual es 'Preparador'. Normalmente solo un Revisor o Socio/Aprobador marca un módulo como Aprobado — puedes cambiar tu rol en el panel lateral si corresponde.")
-            if st.button("💾 Guardar estado", key=f"guardar_estado_{nombre_mod}"):
+                st.warning(":material/lightbulb: Tu rol actual es 'Preparador'. Normalmente solo un Revisor o Socio/Aprobador marca un módulo como Aprobado — puedes cambiar tu rol en el panel lateral si corresponde.")
+            if st.button(":material/save: Guardar estado", key=f"guardar_estado_{nombre_mod}"):
                 st.session_state.estado_revision[nombre_mod] = {
                     "estado": nuevo_estado, "revisor": nuevo_revisor, "comentario": nuevo_comentario,
                     "fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -1166,7 +1223,7 @@ def render_aprobacion():
 
 def render_pbc():
     st.write("")
-    st.markdown('<div class="section-header">📋 Checklist de Documentos Solicitados al Cliente (PBC)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("clipboard")} Checklist de Documentos Solicitados al Cliente (PBC)</div>', unsafe_allow_html=True)
     st.caption("Lleva control de qué se pidió, a quién, para cuándo, y si ya llegó. Agrega o quita renglones directamente en la tabla.")
     if st.session_state.pbc_checklist is None:
         st.session_state.pbc_checklist = pd.DataFrame([
@@ -1185,7 +1242,7 @@ def render_pbc():
         },
         key="pbc_editor",
     )
-    if st.button("💾 Guardar Checklist PBC", use_container_width=True, key="guardar_pbc"):
+    if st.button(":material/save: Guardar Checklist PBC", use_container_width=True, key="guardar_pbc"):
         st.session_state.pbc_checklist = df_pbc_editado
         registrar_evento("Checklist PBC", "Actualizó el checklist de documentos solicitados")
         st.success("Checklist guardado.")
@@ -1197,7 +1254,7 @@ def render_pbc():
 
 def render_bitacora():
     st.write("")
-    st.markdown('<div class="section-header">📜 Bitácora de Auditoría</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("book")} Bitácora de Auditoría</div>', unsafe_allow_html=True)
     st.caption("Registro cronológico de las acciones realizadas en esta sesión (usuario, rol, módulo y acción). Se guarda dentro del respaldo JSON, pero se pierde si cierras el navegador sin descargarlo.")
     if st.session_state.bitacora_eventos:
         df_bitacora = pd.DataFrame(st.session_state.bitacora_eventos).iloc[::-1].reset_index(drop=True)
@@ -1205,22 +1262,52 @@ def render_bitacora():
         buffer_bit = io.BytesIO()
         with pd.ExcelWriter(buffer_bit, engine='openpyxl') as writer:
             df_bitacora.to_excel(writer, sheet_name='Bitacora', index=False)
-        st.download_button(label="📥 Descargar Bitácora (.XLSX)", data=buffer_bit.getvalue(), file_name="Bitacora_Auditoria.xlsx", use_container_width=True)
-        if st.button("🗑️ Vaciar Bitácora", key="vaciar_bitacora"):
+        st.download_button(label=":material/download: Descargar Bitácora (.XLSX)", data=buffer_bit.getvalue(), file_name="Bitacora_Auditoria.xlsx", use_container_width=True)
+        if st.button(":material/delete: Vaciar Bitácora", key="vaciar_bitacora"):
             st.session_state.bitacora_eventos = []
             st.rerun()
     else:
-        st.info("💡 Aún no hay eventos registrados. Cada vez que ejecutes una conciliación o cambies un estado de aprobación, aparecerá aquí.")
+        st.info(":material/lightbulb: Aún no hay eventos registrados. Cada vez que ejecutes una conciliación o cambies un estado de aprobación, aparecerá aquí.")
 
 def render_gestion_usuarios():
     st.write("")
-    st.markdown('<div class="section-header">👥 Gestión de Usuarios</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("users")} Gestión de Usuarios</div>', unsafe_allow_html=True)
+
+    # --- Disponible para CUALQUIER usuario autenticado, sin importar su rol ---
+    st.markdown("#### :material/key: Cambiar mi Contraseña")
+    with st.form("form_cambiar_password", clear_on_submit=True):
+        cp1, cp2, cp3 = st.columns(3)
+        with cp1: pass_actual = st.text_input("Contraseña actual:", type="password", key="cp_actual")
+        with cp2: pass_nueva = st.text_input("Nueva contraseña:", type="password", key="cp_nueva")
+        with cp3: pass_nueva_confirmar = st.text_input("Confirmar nueva contraseña:", type="password", key="cp_confirmar")
+        cambiar_pass = st.form_submit_button("Actualizar Contraseña", type="primary", use_container_width=True)
+    if cambiar_pass:
+        usuario_actual_info = st.session_state.usuarios_sistema.get(st.session_state.usuario_autenticado)
+        if usuario_actual_info is None:
+            st.error("No se encontró tu usuario en el sistema. Vuelve a iniciar sesión.")
+        elif not _verificar_password(pass_actual, usuario_actual_info["salt"], usuario_actual_info["hash"]):
+            st.error("La contraseña actual no es correcta.")
+        elif len(pass_nueva) < 6:
+            st.error("La nueva contraseña debe tener al menos 6 caracteres.")
+        elif pass_nueva != pass_nueva_confirmar:
+            st.error("La confirmación no coincide con la nueva contraseña.")
+        elif pass_nueva == pass_actual:
+            st.warning("La nueva contraseña debe ser distinta a la actual.")
+        else:
+            nuevo_salt, nuevo_hash = _hash_password(pass_nueva)
+            usuario_actual_info["salt"] = nuevo_salt
+            usuario_actual_info["hash"] = nuevo_hash
+            registrar_evento("Gestión de Usuarios", "Cambió su propia contraseña")
+            st.success(":material/check_circle: Contraseña actualizada correctamente. La usarás la próxima vez que inicies sesión.")
+
+    st.markdown("---")
+
     if st.session_state.rol_actual != "Administrador":
-        st.warning("🚫 Acceso restringido. Solo un usuario con rol **Administrador** puede entrar a este módulo.")
+        st.info(":material/lightbulb: El resto de este módulo (agregar, bloquear o eliminar usuarios) está restringido a usuarios con rol **Administrador**. Si necesitas uno de esos cambios, pídeselo a tu Administrador.")
         return
     st.caption("Los usuarios viven en la memoria de este servidor mientras esté corriendo — no hay base de datos externa detrás. Si el servidor se reinicia, la lista vuelve a su estado inicial (solo el usuario admin).")
 
-    st.markdown("#### ➕ Agregar Usuario")
+    st.markdown("#### :material/add: Agregar Usuario")
     with st.form("form_nuevo_usuario", clear_on_submit=True):
         cu1, cu2, cu3 = st.columns(3)
         with cu1: nuevo_usuario_nombre = st.text_input("Usuario (sin espacios):")
@@ -1246,7 +1333,7 @@ def render_gestion_usuarios():
             st.rerun()
 
     st.markdown("---")
-    st.markdown("#### 📋 Usuarios Registrados")
+    st.markdown("#### :material/checklist: Usuarios Registrados")
     admins_activos = [u for u, info in st.session_state.usuarios_sistema.items() if info["rol"] == "Administrador" and not info["bloqueado"]]
     for nombre_u, info_u in st.session_state.usuarios_sistema.items():
         with st.container():
@@ -1259,12 +1346,12 @@ def render_gestion_usuarios():
                 st.markdown(info_u["rol"])
             with cu3:
                 if info_u["bloqueado"]:
-                    st.markdown("🔴 Bloqueado")
+                    st.markdown(":material/cancel: Bloqueado")
                 else:
-                    st.markdown("🟢 Activo")
+                    st.markdown(":material/check_circle: Activo")
             with cu4:
                 es_unico_admin = nombre_u in admins_activos and len(admins_activos) <= 1 and not info_u["bloqueado"]
-                if st.button("🔓" if info_u["bloqueado"] else "🔒", key=f"toggle_bloqueo_{nombre_u}", help="Bloquear/Desbloquear", disabled=es_unico_admin):
+                if st.button(":material/lock_open:" if info_u["bloqueado"] else ":material/lock:", key=f"toggle_bloqueo_{nombre_u}", help="Bloquear/Desbloquear", disabled=es_unico_admin):
                     st.session_state.usuarios_sistema[nombre_u]["bloqueado"] = not info_u["bloqueado"]
                     if not st.session_state.usuarios_sistema[nombre_u]["bloqueado"]:
                         st.session_state.usuarios_sistema[nombre_u]["intentos_fallidos"] = 0
@@ -1273,7 +1360,7 @@ def render_gestion_usuarios():
                 if es_unico_admin:
                     st.caption("Único admin")
             with cu5:
-                if st.button("🗑️", key=f"eliminar_usuario_{nombre_u}", help="Eliminar", disabled=(nombre_u == st.session_state.usuario_autenticado or es_unico_admin)):
+                if st.button(":material/delete:", key=f"eliminar_usuario_{nombre_u}", help="Eliminar", disabled=(nombre_u == st.session_state.usuario_autenticado or es_unico_admin)):
                     del st.session_state.usuarios_sistema[nombre_u]
                     registrar_evento("Gestión de Usuarios", f"Eliminó al usuario '{nombre_u}'")
                     st.rerun()
@@ -1281,24 +1368,24 @@ def render_gestion_usuarios():
 
 def render_ayuda():
     st.write("")
-    st.markdown('<div class="section-header">❓ Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📊 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🏦 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📄 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🧾 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🌐 5. Multidivisa USD</div>Algoritmo cambiario para calcular de forma exacta la ganancia o pérdida cambiaria.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">👔 6. Nómina CFDI</div>Cruzamiento masivo para verificar recibos de nómina timbrados ante el SAT vs pólizas.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📦 7. Inventarios</div>Levantamiento físico real de auditoría contra los saldos del Kárdex contable.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">💸 8. IVA Flujo</div>Validar que el IVA determinado coincida con el flujo real reflejado en bancos.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">⚙️ 9. Configuración y Copias JSON</div>Gestión de membretes, tolerancias, fecha límite de cierre y carga/descarga de respaldos de sesión.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🏭 10. Activo Fijo</div>Calcula la depreciación esperada en línea recta a partir del kárdex de activos y la compara contra la depreciación acumulada registrada en libros.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📈 11. Razones Financieras</div>Captura cifras del Balance General y Estado de Resultados para obtener liquidez, apalancamiento, márgenes, ROA y ROE con su gráfica.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">🏛️ 12. Cumplimiento SAT</div>Checklist de obligaciones fiscales (ISR, IVA, DIOT, Nómina, 32-D, Contabilidad Electrónica) con fechas límite y estatus — no calcula impuestos, solo da seguimiento a lo que ya se presentó.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">✅ 13. Revisión y Aprobación</div>Marca cada módulo como Preparado, Revisado o Aprobado, con responsable, comentario y fecha — deja constancia de quién validó cada parte del trabajo.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📋 14. Checklist PBC</div>Lista editable de documentos solicitados al cliente, con responsable, fecha límite y estatus de recepción.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">📜 15. Bitácora de Auditoría</div>Registro cronológico de acciones (usuario, rol, módulo, acción y hora) de todo lo ejecutado en la sesión, exportable a Excel.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">👤 Panel Lateral: Sesión, Multiempresa y Notificaciones</div>Muestra tu usuario y rol autenticados, permite cerrar sesión, guardar/alternar entre varias auditorías en la misma sesión, y revisa alertas de fechas límite, insumos faltantes o documentos PBC pendientes.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="help-card"><div class="help-title">👥 16. Gestión de Usuarios (solo Administrador)</div>Agrega, bloquea/desbloquea y elimina usuarios del sistema. Requiere haber iniciado sesión con un usuario con rol Administrador.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("dashboard")} 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("bank")} 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("document")} 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("invoice")} 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("globe")} 5. Multidivisa USD</div>Algoritmo cambiario para calcular de forma exacta la ganancia o pérdida cambiaria.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("badge")} 6. Nómina CFDI</div>Cruzamiento masivo para verificar recibos de nómina timbrados ante el SAT vs pólizas.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("box")} 7. Inventarios</div>Levantamiento físico real de auditoría contra los saldos del Kárdex contable.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("cash")} 8. IVA Flujo</div>Validar que el IVA determinado coincida con el flujo real reflejado en bancos.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("gear")} 9. Configuración y Copias JSON</div>Gestión de membretes, tolerancias, fecha límite de cierre y carga/descarga de respaldos de sesión.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("factory")} 10. Activo Fijo</div>Calcula la depreciación esperada en línea recta a partir del kárdex de activos y la compara contra la depreciación acumulada registrada en libros.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("trending")} 11. Razones Financieras</div>Captura cifras del Balance General y Estado de Resultados para obtener liquidez, apalancamiento, márgenes, ROA y ROE con su gráfica.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("scale")} 12. Cumplimiento SAT</div>Checklist de obligaciones fiscales (ISR, IVA, DIOT, Nómina, 32-D, Contabilidad Electrónica) con fechas límite y estatus — no calcula impuestos, solo da seguimiento a lo que ya se presentó.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("check")} 13. Revisión y Aprobación</div>Marca cada módulo como Preparado, Revisado o Aprobado, con responsable, comentario y fecha — deja constancia de quién validó cada parte del trabajo.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("clipboard")} 14. Checklist PBC</div>Lista editable de documentos solicitados al cliente, con responsable, fecha límite y estatus de recepción.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("book")} 15. Bitácora de Auditoría</div>Registro cronológico de acciones (usuario, rol, módulo, acción y hora) de todo lo ejecutado en la sesión, exportable a Excel.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("user")} Panel Lateral: Sesión, Multiempresa y Notificaciones</div>Muestra tu usuario y rol autenticados, permite cerrar sesión, guardar/alternar entre varias auditorías en la misma sesión, y revisa alertas de fechas límite, insumos faltantes o documentos PBC pendientes.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("users")} 16. Gestión de Usuarios (solo Administrador)</div>Agrega, bloquea/desbloquea y elimina usuarios del sistema. Requiere haber iniciado sesión con un usuario con rol Administrador.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 # 5. NAVEGACIÓN FINAL: PESTAÑAS AGRUPADAS POR CATEGORÍA
@@ -1308,30 +1395,30 @@ def render_ayuda():
 # una sola barra plana de 17 pestañas, evita que la navegación se desborde
 # visualmente y ayuda a que la app se sienta organizada por área de trabajo.
 CATEGORIAS = {
-    "📊 Panel General": [("📊 Dashboard", render_dashboard)],
-    "🔄 Conciliaciones": [
-        ("🏦 Bancos vs Auxiliar", render_bancos),
-        ("📄 XML vs Contabilidad", render_xml),
-        ("🧾 Clientes y Proveedores", render_saldos),
-        ("🌐 Multidivisa USD", render_multidivisa),
-        ("👔 Nómina CFDI", render_nomina),
-        ("📦 Inventarios", render_inventarios),
-        ("💸 IVA Flujo", render_iva),
-        ("🏭 Activo Fijo", render_activo_fijo),
+    ":material/bar_chart: Panel General": [(":material/bar_chart: Dashboard", render_dashboard)],
+    ":material/refresh: Conciliaciones": [
+        (":material/account_balance: Bancos vs Auxiliar", render_bancos),
+        (":material/description: XML vs Contabilidad", render_xml),
+        (":material/receipt_long: Clientes y Proveedores", render_saldos),
+        (":material/public: Multidivisa USD", render_multidivisa),
+        (":material/badge: Nómina CFDI", render_nomina),
+        (":material/inventory_2: Inventarios", render_inventarios),
+        (":material/payments: IVA Flujo", render_iva),
+        (":material/factory: Activo Fijo", render_activo_fijo),
     ],
-    "📈 Análisis y Cumplimiento": [
-        ("📈 Razones Financieras", render_razones),
-        ("🏛️ Cumplimiento SAT", render_sat),
+    ":material/trending_up: Análisis y Cumplimiento": [
+        (":material/trending_up: Razones Financieras", render_razones),
+        (":material/balance: Cumplimiento SAT", render_sat),
     ],
-    "🛡️ Gobierno y Auditoría": [
-        ("✅ Revisión y Aprobación", render_aprobacion),
-        ("📋 Checklist PBC", render_pbc),
-        ("📜 Bitácora", render_bitacora),
+    ":material/shield: Gobierno y Auditoría": [
+        (":material/check_circle: Revisión y Aprobación", render_aprobacion),
+        (":material/checklist: Checklist PBC", render_pbc),
+        (":material/history: Bitácora", render_bitacora),
     ],
-    "⚙️ Sistema": [
-        ("⚙️ Configuración", render_configuracion),
-        ("👥 Gestión de Usuarios", render_gestion_usuarios),
-        ("❓ Ayuda", render_ayuda),
+    ":material/settings: Sistema": [
+        (":material/settings: Configuración", render_configuracion),
+        (":material/group: Gestión de Usuarios", render_gestion_usuarios),
+        (":material/help: Ayuda", render_ayuda),
     ],
 }
 
