@@ -398,6 +398,22 @@ def leer_archivo_contable(file):
     else: df = pd.read_excel(file)
     return _deduplicar_columnas(df)
 
+def _sanear_para_editor(df, columnas_protegidas):
+    """st.data_editor serializa el DataFrame con Apache Arrow, que NO tolera
+    columnas con tipos mixtos (texto y número revueltos en la misma columna).
+    Esto pasa fácil al combinar Banco + Auxiliar: si ambos archivos traen una
+    columna con el MISMO nombre pero contenido de distinto tipo (ej. una es
+    texto y la otra numérica), pandas las junta en una sola columna mixta al
+    concatenar, y Arrow truena con StreamlitAPIException. Aquí convertimos a
+    texto cualquier columna que no esté protegida (las que sí necesitamos con
+    su tipo real, como Fecha/Monto, para los column_config y los cálculos)."""
+    df = df.copy()
+    for columna in df.columns:
+        if columna in columnas_protegidas:
+            continue
+        df[columna] = df[columna].apply(lambda v: "" if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v))
+    return df
+
 def validar_rfc(rfc):
     pattern = r'^[A-Z&Ñ]{3,4}[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[A-Z0-9]{3}$'
     return bool(re.match(pattern, str(rfc).upper().strip()))
@@ -1107,6 +1123,7 @@ def render_bancos():
                     st.markdown(f'<div class="section-header">{icono("clipboard")} Editor de Clasificación por Departamento</div>', unsafe_allow_html=True)
                     st.caption("Incluye todas las columnas originales del estado de cuenta / auxiliar. Se guarda automáticamente en cada edición.")
                     df_clasificado_actual = _deduplicar_columnas(df_clasificado_actual)
+                    df_clasificado_actual = _sanear_para_editor(df_clasificado_actual, {"Origen", "Departamento", "_Fecha_Norm", "_Monto_Norm"})
                     df_editado = st.data_editor(
                         df_clasificado_actual,
                         use_container_width=True,
