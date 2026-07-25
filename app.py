@@ -398,18 +398,59 @@ def leer_archivo_contable(file):
     else: df = pd.read_excel(file)
     return _deduplicar_columnas(df)
 
-def _sanear_para_editor(df, columnas_protegidas):
+def _coercionar_fecha_individual(v):
+    """Convierte un valor de fecha de origen incierto (objeto date/datetime,
+    texto ISO, o un epoch numérico corrupto de una versión anterior del
+    respaldo JSON) a SIEMPRE un datetime.date o None — nunca NaT, nunca un
+    número, nunca texto. pandas interpreta enteros como NANOSEGUNDOS por
+    default, lo cual da fechas de 1970 si el número en realidad es un epoch
+    en MILISEGUNDOS (como los que generaba nuestro propio to_json antes del
+    arreglo de fechas) — por eso los números se reinterpretan explícitamente
+    como milisegundos."""
+    if v is None:
+        return None
+    if isinstance(v, datetime.datetime):
+        return v.date()
+    if isinstance(v, datetime.date):
+        return v
+    if isinstance(v, (int, float)):
+        if pd.isna(v):
+            return None
+        resultado = pd.to_datetime(v, unit="ms", errors="coerce")
+        return resultado.date() if pd.notna(resultado) else None
+    texto = str(v).strip()
+    # Las fechas ISO (YYYY-MM-DD, como las que genera nuestro propio respaldo
+    # JSON) son inequívocas: se parsean directo, SIN dayfirst de por medio,
+    # porque dayfirst=True con format='mixed' puede leer mal un ISO ya
+    # inequívoco (ej. interpretar "2026-07-09" como 7 de septiembre en vez
+    # de 9 de julio). dayfirst solo se aplica a formatos ambiguos tipo
+    # DD/MM/YYYY, típicos de los archivos que suben los usuarios.
+    if re.match(r'^\d{4}-\d{2}-\d{2}', texto):
+        resultado = pd.to_datetime(texto, format="mixed", errors="coerce")
+    else:
+        resultado = pd.to_datetime(texto, format="mixed", dayfirst=True, errors="coerce")
+    return resultado.date() if pd.notna(resultado) else None
+
+def _sanear_para_editor(df):
     """st.data_editor serializa el DataFrame con Apache Arrow, que NO tolera
     columnas con tipos mixtos (texto y número revueltos en la misma columna).
     Esto pasa fácil al combinar Banco + Auxiliar: si ambos archivos traen una
-    columna con el MISMO nombre pero contenido de distinto tipo (ej. una es
-    texto y la otra numérica), pandas las junta en una sola columna mixta al
-    concatenar, y Arrow truena con StreamlitAPIException. Aquí convertimos a
-    texto cualquier columna que no esté protegida (las que sí necesitamos con
-    su tipo real, como Fecha/Monto, para los column_config y los cálculos)."""
+    columna con el MISMO nombre pero contenido de distinto tipo, pandas las
+    junta en una sola columna mixta al concatenar, y Arrow truena con
+    StreamlitAPIException.
+
+    '_Fecha_Norm' y '_Monto_Norm' se fuerzan a SU tipo real (fecha / número)
+    en vez de solo 'protegerlas' sin tocar — así, aunque vengan mezcladas por
+    haber pasado antes por un respaldo JSON de una versión anterior de la
+    app (texto, epoch, fecha real, todo revuelto), quedan con un tipo único
+    y consistente. Todo lo demás se convierte a texto por seguridad."""
     df = df.copy()
+    if "_Fecha_Norm" in df.columns:
+        df["_Fecha_Norm"] = df["_Fecha_Norm"].apply(_coercionar_fecha_individual)
+    if "_Monto_Norm" in df.columns:
+        df["_Monto_Norm"] = pd.to_numeric(df["_Monto_Norm"], errors="coerce").fillna(0.0)
     for columna in df.columns:
-        if columna in columnas_protegidas:
+        if columna in ("_Fecha_Norm", "_Monto_Norm"):
             continue
         df[columna] = df[columna].apply(lambda v: "" if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v))
     return df
@@ -613,7 +654,7 @@ def construir_clasificacion_pendientes():
 
     columnas_frente = ["Origen", "Departamento", "_Fecha_Norm", "_Monto_Norm"]
     resto = [c for c in df_combinado.columns if c not in columnas_frente]
-    return df_combinado[columnas_frente + resto]
+    return _sanear_para_editor(df_combinado[columnas_frente + resto])
 
 def render_dashboard():
     st.write("")
@@ -1123,7 +1164,7 @@ def render_bancos():
                     st.markdown(f'<div class="section-header">{icono("clipboard")} Editor de Clasificación por Departamento</div>', unsafe_allow_html=True)
                     st.caption("Incluye todas las columnas originales del estado de cuenta / auxiliar. Se guarda automáticamente en cada edición.")
                     df_clasificado_actual = _deduplicar_columnas(df_clasificado_actual)
-                    df_clasificado_actual = _sanear_para_editor(df_clasificado_actual, {"Origen", "Departamento", "_Fecha_Norm", "_Monto_Norm"})
+                    df_clasificado_actual = _sanear_para_editor(df_clasificado_actual)
                     df_editado = st.data_editor(
                         df_clasificado_actual,
                         use_container_width=True,
