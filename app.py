@@ -109,6 +109,18 @@ st.markdown("""
     .bl-mini-title { font-size:13px; color:#8B96A5; font-weight:600; margin-bottom:6px; }
     .bl-mini-value { font-size:24px; font-weight:700; color:#E6EDF3; }
 
+    /* ---- Tarjeta de inicio de sesión: centrada, con sombra y acento superior ---- */
+    div[class*="st-key-login_card"] {
+        background-color: #161B22 !important;
+        border: 1px solid #2A313C !important;
+        border-top: 3px solid #38BDF8 !important;
+        border-radius: 14px !important;
+        padding: 32px 30px !important;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.35) !important;
+        max-width: 420px;
+        margin: 0 auto;
+    }
+
     /* ---- Tarjetas contenedoras para TODAS las gráficas (fondo gris que las delimita) ---- */
     div[class*="st-key-chartcard_"] {
         background-color: #161B22 !important;
@@ -268,11 +280,32 @@ if 'sesion_autenticada' not in st.session_state: st.session_state.sesion_autenti
 if 'usuario_autenticado' not in st.session_state: st.session_state.usuario_autenticado = None
 
 if not st.session_state.sesion_autenticada:
-    with st.form("form_login"):
-        st.markdown("### :gray[:material/lock:] Iniciar Sesión")
-        usuario_input = st.text_input("Usuario:")
-        password_input = st.text_input("Contraseña:", type="password")
-        enviado = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+    st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+    col_izq, col_centro, col_der = st.columns([1, 1.15, 1])
+    with col_centro:
+        with st.container(key="login_card", border=True):
+            if st.session_state.logo_bytes:
+                lc1, lc2, lc3 = st.columns([1, 1, 1])
+                with lc2:
+                    st.image(st.session_state.logo_bytes, width=96)
+            st.markdown(
+                "<div style='text-align:center; margin-top:6px;'>"
+                "<span style='font-family:Manrope,sans-serif; font-weight:800; font-size:24px; color:#FFFFFF;'>Iniciar Sesión</span><br>"
+                "<span style='font-size:13px; color:#8B96A5;'>Ingresa tus credenciales para continuar</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+            with st.form("form_login"):
+                usuario_input = st.text_input("Usuario:")
+                password_input = st.text_input("Contraseña:", type="password")
+                st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
+                enviado = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+            st.markdown(
+                "<p style='text-align:center; font-size:11px; color:#5B6472; margin-top:14px;'>"
+                "TaxFlow-Diamond · Enterprise Financial &amp; XML Reconciliation Suite</p>",
+                unsafe_allow_html=True,
+            )
     if enviado:
         registro_usuario = st.session_state.usuarios_sistema.get(usuario_input)
         if registro_usuario is None:
