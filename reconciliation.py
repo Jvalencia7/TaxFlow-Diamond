@@ -32,9 +32,10 @@ import numpy as np
 import pandas as pd
 
 
-def _preparar(df, col_monto, col_fecha, prefijo_id):
+def _preparar(df, col_monto, col_fecha, prefijo_id, preservar_signo=False):
     df = df.dropna(subset=[col_monto, col_fecha]).copy()
-    df["Monto_Limpio"] = pd.to_numeric(df[col_monto], errors="coerce").fillna(0).abs().round(2)
+    valores = pd.to_numeric(df[col_monto], errors="coerce").fillna(0)
+    df["Monto_Limpio"] = (valores if preservar_signo else valores.abs()).round(2)
     df["Fecha_Limpia"] = pd.to_datetime(df[col_fecha], format="mixed", dayfirst=True, errors="coerce").dt.date
     df = df.dropna(subset=["Fecha_Limpia"]).reset_index(drop=True)
     df[f"_id_{prefijo_id}"] = df.index
@@ -50,10 +51,19 @@ def conciliar_dos_fuentes(
     col_fecha_aux,
     tolerancia_monto=0.50,
     tolerancia_dias=3,
+    preservar_signo=False,
 ):
     """
     Concilia dos DataFrames (ej. Banco vs Auxiliar) por monto y fecha,
     usando match exacto primero y aproximado 1-a-1 después.
+
+    preservar_signo=True conserva el signo del monto (positivo = abono,
+    negativo = cargo) en vez de tomar el valor absoluto. Esto es importante
+    cuando se concilian cargos y abonos EN EL MISMO PASE: si se usa valor
+    absoluto, un cargo de $500 y un abono de $500 se verían "iguales" y
+    podrían cruzarse por error. Con el signo preservado, un cargo solo
+    puede emparejar con otro cargo (o con la salida correspondiente del otro
+    lado) y un abono solo con otro abono.
 
     Devuelve un dict con:
       - conciliados: DataFrame con las partidas emparejadas (exactas + aproximadas)
@@ -61,8 +71,8 @@ def conciliar_dos_fuentes(
       - pendientes_auxiliar: filas de df_auxiliar sin pareja
       - resumen: dict con sumas y conteos útiles para el dashboard
     """
-    df_b = _preparar(df_banco, col_monto_banco, col_fecha_banco, "banco")
-    df_a = _preparar(df_auxiliar, col_monto_aux, col_fecha_aux, "aux")
+    df_b = _preparar(df_banco, col_monto_banco, col_fecha_banco, "banco", preservar_signo)
+    df_a = _preparar(df_auxiliar, col_monto_aux, col_fecha_aux, "aux", preservar_signo)
 
     # --- Paso 1: match exacto (fecha + monto), soportando duplicados 1 a 1 ---
     df_b["_ocurrencia"] = df_b.groupby(["Fecha_Limpia", "Monto_Limpio"]).cumcount()
@@ -146,7 +156,7 @@ def conciliar_dos_fuentes(
     )
 
     resumen = {
-        "suma_conciliado": float(conciliados["Monto_Limpio_Banco"].sum()) if not conciliados.empty else 0.0,
+        "suma_conciliado": float(conciliados["Monto_Limpio_Banco"].abs().sum()) if not conciliados.empty else 0.0,
         "suma_banco_pendiente": float(pendientes_banco[col_monto_banco].astype(float).abs().sum()) if not pendientes_banco.empty else 0.0,
         "suma_aux_pendiente": float(pendientes_auxiliar[col_monto_aux].astype(float).abs().sum()) if not pendientes_auxiliar.empty else 0.0,
         "num_exactos": int(len(exactos)),
