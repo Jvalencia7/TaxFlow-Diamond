@@ -1,6 +1,8 @@
 streamlit
 pandas
-openpyxl
-plotly
 numpy
+plotly
 matplotlib
+openpyxl
+requests
+cfdiclient
