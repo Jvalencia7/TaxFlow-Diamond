@@ -11,6 +11,8 @@ import re
 import datetime
 import hashlib
 import os
+import time
+import base64
 from reconciliation import conciliar_dos_fuentes
 
 # ==============================================================================
@@ -225,6 +227,7 @@ variables_sesion = {
     'auditorias_guardadas': {},
     'df_af_kardex': None, 'af_cargados': False, 'af_ejecutado': False, 'af_conciliados': None, 'af_discrepancias': None,
     'sat_checklist': None,
+    'sat_descarga_zip': None, 'sat_descarga_total_xml': 0, 'sat_historial': [],
     'rf_datos': {},
 }
 
@@ -1989,10 +1992,289 @@ def render_gestion_usuarios():
                     st.rerun()
             st.markdown("---")
 
+ESTADOS_SAT = {0: "Token inválido", 1: "Aceptada", 2: "En proceso", 3: "Terminada", 4: "Error", 5: "Rechazada", 6: "Vencida"}
+MAX_DIAS_SAT = 30  # ventana segura; el SAT limita resultados por solicitud
+TIPOS_VALIDOS_EMITIDOS_SAT = {"I", "E", "N", "T", "P"}
+TIPOS_VALIDOS_RECIBIDOS_SAT = {"I", "E", "P"}
+
+def _fechas_por_ventana_sat(fecha_inicial, fecha_final, max_dias):
+    """Parte el rango de fechas en ventanas de máx. max_dias días (el SAT limita resultados por solicitud)."""
+    ventanas = []
+    actual = fecha_inicial
+    while actual <= fecha_final:
+        fin = min(actual + datetime.timedelta(days=max_dias - 1), fecha_final)
+        ventanas.append((actual, fin))
+        actual = fin + datetime.timedelta(days=1)
+    return ventanas
+
+def _con_reintentos_sat(fn, log_fn, descripcion, intentos=4, espera_base=8):
+    """Reintenta fn() si el SAT tarda o hay un hipo de red. No reintenta si el
+    propio SAT respondió con un rechazo explícito (eso se deja propagar)."""
+    ultimo_error = None
+    for intento in range(1, intentos + 1):
+        try:
+            return fn()
+        except Exception as e:
+            ultimo_error = e
+            if intento < intentos:
+                espera = espera_base * intento
+                log_fn(f"⚠ {descripcion} no respondió a tiempo (intento {intento}/{intentos}). Reintentando en {espera}s…")
+                time.sleep(espera)
+    raise ultimo_error
+
+def _procesar_solicitud_sat(fiel, rfc, fecha_ini, fecha_fin, direccion, tipo_solicitud, tipos_comprobante, progreso_ctx, log_fn, progreso_fn, clases_sat):
+    """direccion: 'emitidos' o 'recibidos'. Hace una solicitud separada por cada
+    tipo de comprobante (el SAT solo acepta un tipo por solicitud) y por cada
+    ventana de fechas. Devuelve lista de (nombre_paquete, bytes_zip)."""
+    Autenticacion, DescargaMasiva, SolicitaDescargaEmitidos, SolicitaDescargaRecibidos, VerificaSolicitudDescarga = clases_sat
+    auth = Autenticacion(fiel)
+    solicitante = SolicitaDescargaEmitidos(fiel) if direccion == "emitidos" else SolicitaDescargaRecibidos(fiel)
+    verificador = VerificaSolicitudDescarga(fiel)
+    descargador = DescargaMasiva(fiel)
+
+    paquetes_zip = []
+    lista_tipos = tipos_comprobante if tipos_comprobante else [None]
+
+    def _reportar(fraccion_extra=0.0):
+        avance = progreso_ctx["completadas"] + fraccion_extra
+        progreso_fn(100 * avance / progreso_ctx["total"])
+
+    for tipo_c in lista_tipos:
+        etiqueta_tipo = f" (tipo {tipo_c})" if tipo_c else ""
+        for (ini, fin) in _fechas_por_ventana_sat(fecha_ini, fecha_fin, MAX_DIAS_SAT):
+            log_fn(f"Solicitando {direccion}{etiqueta_tipo} {ini} a {fin}…")
+            token = _con_reintentos_sat(lambda: auth.obtener_token(), log_fn, "Obtener token")
+
+            kwargs = {"tipo_solicitud": tipo_solicitud}
+            if direccion == "emitidos":
+                kwargs["rfc_emisor"] = rfc
+            else:
+                kwargs["rfc_receptor"] = rfc
+                kwargs["estado_comprobante"] = "Vigente"
+            if tipo_c:
+                kwargs["tipo_comprobante"] = tipo_c
+
+            solicitud = _con_reintentos_sat(
+                lambda: solicitante.solicitar_descarga(
+                    token, rfc,
+                    datetime.datetime.combine(ini, datetime.datetime.min.time()),
+                    datetime.datetime.combine(fin, datetime.datetime.min.time()),
+                    **kwargs,
+                ),
+                log_fn, "Solicitar descarga",
+            )
+
+            if solicitud.get("cod_estatus") not in ("5000",):
+                log_fn(f"⚠ Solicitud rechazada: {solicitud.get('mensaje')} (cod {solicitud.get('cod_estatus')})")
+                progreso_ctx["completadas"] += 1
+                _reportar()
+                continue
+
+            id_solicitud = solicitud["id_solicitud"]
+            log_fn(f"Solicitud aceptada (id {id_solicitud[:8]}…). Esperando que el SAT la procese…")
+
+            intentos = 0
+            while True:
+                time.sleep(15)
+                intentos += 1
+                _reportar(min(intentos / 80, 0.95))
+                token = _con_reintentos_sat(lambda: auth.obtener_token(), log_fn, "Obtener token")
+                verificacion = _con_reintentos_sat(
+                    lambda: verificador.verificar_descarga(token, rfc, id_solicitud),
+                    log_fn, "Verificar solicitud",
+                )
+                estado = int(verificacion.get("estado_solicitud", 0))
+
+                if estado <= 2:
+                    log_fn(f"…estado: {ESTADOS_SAT.get(estado, estado)} (intento {intentos})")
+                    if intentos > 80:  # ~20 minutos de espera máxima por ventana/tipo
+                        log_fn("⚠ Tiempo de espera agotado para esta ventana, se omite.")
+                        break
+                    continue
+
+                if estado >= 4:
+                    log_fn(f"✗ {ESTADOS_SAT.get(estado, estado)}: {verificacion.get('mensaje')}")
+                    break
+
+                n_cfdis = verificacion.get("numero_cfdis", "?")
+                log_fn(f"✓ Lista. {n_cfdis} CFDIs en {len(verificacion.get('paquetes', []))} paquete(s).")
+                for paquete_id in verificacion.get("paquetes", []):
+                    token = _con_reintentos_sat(lambda: auth.obtener_token(), log_fn, "Obtener token")
+                    resultado = _con_reintentos_sat(
+                        lambda: descargador.descargar_paquete(token, rfc, paquete_id),
+                        log_fn, "Descargar paquete",
+                    )
+                    zip_bytes = base64.b64decode(resultado["paquete_b64"])
+                    paquetes_zip.append((f"{direccion}_{ini}_{fin}_{paquete_id}.zip", zip_bytes))
+                    log_fn(f"↓ Descargado paquete {paquete_id[:8]}…")
+                break
+
+            progreso_ctx["completadas"] += 1
+            _reportar()
+
+    return paquetes_zip
+
+def render_descarga_sat():
+    st.write("")
+    st.markdown(f'<div class="section-header">{icono("globe")} Descarga Masiva de CFDI — SAT</div>', unsafe_allow_html=True)
+    st.warning(":orange[:material/warning:] Tu archivo **.key** y tu **contraseña de e.firma** equivalen a tu firma autógrafa. Se usan solo en memoria durante esta descarga — nunca se guardan en disco, ni se registran en la Bitácora ni en el respaldo JSON. Usa esta sección solo en un equipo de confianza.")
+
+    try:
+        from cfdiclient import Autenticacion, DescargaMasiva, Fiel, SolicitaDescargaEmitidos, SolicitaDescargaRecibidos, VerificaSolicitudDescarga
+    except ImportError:
+        st.error(":red[:material/block:] Falta instalar la librería **cfdiclient** en este servidor (`pip install cfdiclient`). Sin ella este módulo no puede conectarse al SAT.")
+        return
+
+    # El SAT a veces tarda más de los 15s que trae cfdiclient por default en
+    # 'verificar solicitud'. Forzamos un timeout más generoso en todas las
+    # peticiones salientes, una sola vez por sesión.
+    if not st.session_state.get("_sat_timeout_parchado"):
+        try:
+            import requests
+            _original_request = requests.Session.request
+            def _request_con_timeout_largo(self, method, url, **kwargs):
+                timeout = kwargs.get("timeout")
+                if timeout is None or (isinstance(timeout, (int, float)) and timeout < 90):
+                    kwargs["timeout"] = 90
+                return _original_request(self, method, url, **kwargs)
+            requests.Session.request = _request_con_timeout_largo
+            st.session_state["_sat_timeout_parchado"] = True
+        except ImportError:
+            pass
+
+    col1, col2 = st.columns(2)
+    with col1:
+        rfc_sat = st.text_input("RFC:", key="sat_rfc").strip().upper()
+        archivo_cer = st.file_uploader("Certificado (.cer):", type=["cer"], key="sat_cer")
+    with col2:
+        password_sat = st.text_input("Contraseña de la e.firma:", type="password", key="sat_pass")
+        archivo_key = st.file_uploader("Llave privada (.key):", type=["key"], key="sat_key")
+
+    col3, col4 = st.columns(2)
+    with col3: fecha_ini_sat = st.date_input("Fecha inicial:", key="sat_fecha_ini", format="DD/MM/YYYY")
+    with col4: fecha_fin_sat = st.date_input("Fecha final:", key="sat_fecha_fin", format="DD/MM/YYYY")
+
+    direcciones_sat = st.multiselect("Dirección:", ["emitidos", "recibidos"], default=["emitidos", "recibidos"], key="sat_direcciones")
+    tipo_solicitud_sat = st.radio("Tipo de solicitud:", ["CFDI", "Metadata"], horizontal=True, key="sat_tipo_solicitud")
+
+    tipos_por_direccion = {}
+    if "emitidos" in direcciones_sat:
+        tipos_por_direccion["emitidos"] = st.multiselect("Tipos de comprobante (Emitidos) — vacío = todos:", sorted(TIPOS_VALIDOS_EMITIDOS_SAT), key="sat_tipos_emitidos")
+    if "recibidos" in direcciones_sat:
+        tipos_por_direccion["recibidos"] = st.multiselect("Tipos de comprobante (Recibidos) — vacío = todos:", sorted(TIPOS_VALIDOS_RECIBIDOS_SAT), key="sat_tipos_recibidos")
+
+    col_val, col_desc = st.columns(2)
+    with col_val:
+        if st.button(":blue[:material/check_circle:] Validar e.firma (sin descargar nada)", use_container_width=True, key="sat_validar_btn"):
+            if not (archivo_cer and archivo_key and password_sat):
+                st.error("Sube el .cer, el .key, y escribe la contraseña.")
+            else:
+                try:
+                    fiel_prueba = Fiel(archivo_cer.getvalue(), archivo_key.getvalue(), password_sat)
+                    token_prueba = Autenticacion(fiel_prueba).obtener_token()
+                    if token_prueba:
+                        st.success(":green[:material/check_circle:] e.firma válida — el SAT respondió correctamente.")
+                    else:
+                        st.error("El SAT no devolvió un token válido. Revisa tu RFC/contraseña.")
+                except Exception as e:
+                    st.error(f"No se pudo validar: {e}")
+    with col_desc:
+        iniciar_sat = st.button(":green[:material/play_arrow:] Iniciar Descarga", type="primary", use_container_width=True, key="sat_iniciar_btn")
+
+    st.caption(":blue[:material/info:] El SAT puede tardar varios minutos (a veces más de una hora en rangos amplios) en preparar los paquetes. Mantén esta pestaña abierta mientras corre.")
+
+    if iniciar_sat:
+        if not (archivo_cer and archivo_key and password_sat and rfc_sat and direcciones_sat):
+            st.error("Completa RFC, contraseña, .cer, .key, y selecciona al menos una dirección.")
+        elif fecha_ini_sat > fecha_fin_sat:
+            st.error("La fecha inicial debe ser anterior a la final.")
+        else:
+            marcador_log = st.empty()
+            barra_progreso = st.progress(0)
+            registro_log = []
+
+            def _log_sat(msg):
+                registro_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
+                marcador_log.code("\n".join(registro_log[-25:]))
+
+            def _progreso_sat(pct):
+                barra_progreso.progress(max(0, min(100, int(pct))) / 100)
+
+            try:
+                cer_bytes = archivo_cer.getvalue()
+                key_bytes = archivo_key.getvalue()
+                _log_sat("Validando e.firma…")
+                fiel = Fiel(cer_bytes, key_bytes, password_sat)
+
+                n_ventanas = len(_fechas_por_ventana_sat(fecha_ini_sat, fecha_fin_sat, MAX_DIAS_SAT))
+                total_pasos = sum((len(tipos_por_direccion.get(d, [])) or 1) * n_ventanas for d in direcciones_sat)
+                progreso_ctx = {"completadas": 0, "total": max(total_pasos, 1)}
+                clases_sat = (Autenticacion, DescargaMasiva, SolicitaDescargaEmitidos, SolicitaDescargaRecibidos, VerificaSolicitudDescarga)
+
+                todos_los_paquetes = []
+                for direccion in direcciones_sat:
+                    tipos = tipos_por_direccion.get(direccion, [])
+                    paquetes = _procesar_solicitud_sat(fiel, rfc_sat, fecha_ini_sat, fecha_fin_sat, direccion, tipo_solicitud_sat, tipos, progreso_ctx, _log_sat, _progreso_sat, clases_sat)
+                    todos_los_paquetes.extend(paquetes)
+
+                cer_bytes = key_bytes = password_sat = None  # nunca dejar la llave/contraseña en memoria más de lo necesario
+
+                if not todos_los_paquetes:
+                    _log_sat("No se descargó ningún paquete (revisa el log arriba por rechazos o rangos sin CFDIs).")
+                    st.warning(":orange[:material/warning:] No se encontraron CFDIs en ese rango.")
+                else:
+                    _log_sat("Consolidando XMLs en un solo ZIP…")
+                    out_buffer = io.BytesIO()
+                    total_xml = 0
+                    with zipfile.ZipFile(out_buffer, "w", zipfile.ZIP_DEFLATED) as out_zip:
+                        for nombre_paquete, zip_bytes in todos_los_paquetes:
+                            direccion_nombre = "Emitidos" if nombre_paquete.startswith("emitidos") else "Recibidos"
+                            try:
+                                with zipfile.ZipFile(io.BytesIO(zip_bytes)) as inner_zip:
+                                    for info in inner_zip.infolist():
+                                        if info.filename.lower().endswith(".xml"):
+                                            data = inner_zip.read(info.filename)
+                                            out_zip.writestr(f"{direccion_nombre}/{info.filename}", data)
+                                            total_xml += 1
+                            except zipfile.BadZipFile:
+                                _log_sat(f"⚠ Paquete inválido, se omite: {nombre_paquete}")
+                    out_buffer.seek(0)
+
+                    _log_sat(f"✓ Listo. {total_xml} XML consolidados.")
+                    _progreso_sat(100)
+                    st.session_state.sat_descarga_zip = out_buffer.getvalue()
+                    st.session_state.sat_descarga_total_xml = total_xml
+                    st.session_state.sat_historial.insert(0, {
+                        "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"), "RFC": rfc_sat,
+                        "Periodo": f"{fecha_ini_sat.strftime('%d/%m/%y')} – {fecha_fin_sat.strftime('%d/%m/%y')}",
+                        "Dirección": " + ".join(d.capitalize() for d in direcciones_sat),
+                        "CFDIs": total_xml, "Estado": "Completado",
+                    })
+                    registrar_evento("Descarga SAT", f"Descargó {total_xml} XML del SAT para {rfc_sat} ({fecha_ini_sat} a {fecha_fin_sat})")
+                    st.success(f":green[:material/check_circle:] {total_xml} XML descargados y consolidados.")
+            except Exception as e:
+                _log_sat(f"✗ Error: {e}")
+                st.error(f":red[:material/block:] Error durante la descarga: {e}")
+            finally:
+                cer_bytes = key_bytes = password_sat = None
+
+    if st.session_state.sat_descarga_zip:
+        st.download_button(
+            ":blue[:material/download:] Descargar ZIP con los XML consolidados",
+            data=st.session_state.sat_descarga_zip, file_name="CFDIs_descargados.zip",
+            mime="application/zip", use_container_width=True, key="sat_descargar_zip_btn",
+        )
+
+    if st.session_state.sat_historial:
+        st.markdown("---")
+        st.markdown(f'<div class="section-header">{icono("book")} Historial de Descargas (esta sesión)</div>', unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(st.session_state.sat_historial), use_container_width=True)
+
 def render_ayuda():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("dashboard")} 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("globe")} Descarga Masiva SAT</div>Descarga tus CFDI (Emitidos y/o Recibidos) directo del SAT usando tu e.firma, sin necesidad de entrar al portal manualmente. Requiere la librería <code>cfdiclient</code> instalada en el servidor. Tu contraseña y llave privada nunca se guardan en disco.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("bank")} 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("document")} 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("invoice")} 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
@@ -2020,6 +2302,7 @@ def render_ayuda():
 CATEGORIAS = {
     ":blue[:material/bar_chart:] Panel General": [(":blue[:material/bar_chart:] Dashboard", render_dashboard)],
     ":blue[:material/refresh:] Conciliaciones": [
+        (":blue[:material/cloud_download:] Descarga Masiva SAT", render_descarga_sat),
         (":blue[:material/account_balance:] Bancos vs Auxiliar", render_bancos),
         (":gray[:material/description:] XML vs Contabilidad", render_xml),
         (":orange[:material/receipt_long:] Clientes y Proveedores", render_saldos),
