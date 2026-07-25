@@ -26,16 +26,35 @@ st.set_page_config(
 # Inyección de estilos CSS para visualización ejecutiva e indicadores semafóricos
 st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"], .stApp, p, span, div, label { font-family: 'Inter', -apple-system, sans-serif; }
+    .main-title, .section-header, .help-title, .bl-card-value, .bl-mini-value,
+    .bl-section-title, h1, h2, h3 { font-family: 'Manrope', 'Inter', sans-serif; }
+
     .stApp { background-color: #0D1117; }
-    .main-title { font-size: 38px !important; font-weight: 700 !important; color: #FFFFFF; margin-bottom: 5px; }
+    .main-title { font-size: 38px !important; font-weight: 800 !important; color: #FFFFFF; margin-bottom: 5px; letter-spacing: -0.5px; }
     .subtitle { font-size: 16px !important; color: #FFFFFF; margin-bottom: 30px; font-weight: 500; opacity: 0.75; }
-    .section-header { color: #FFFFFF; font-weight: 600; border-bottom: 2px solid #161B22; padding-bottom: 10px; margin-bottom: 20px; font-size: 22px; }
+    .section-header { color: #FFFFFF; font-weight: 700; border-bottom: 2px solid #161B22; padding-bottom: 10px; margin-bottom: 20px; font-size: 22px; }
     .kpi-card { padding: 15px; border-radius: 6px; color: #0D1117; font-weight: 700; text-align: center; margin-bottom: 15px; }
     .kpi-green { background-color: #2ECC71 !important; }
     .kpi-yellow { background-color: #F1C40F !important; }
     .kpi-red { background-color: #E74C3C !important; }
     .help-card { background-color: #161B22; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #00D4FF; }
-    .help-title { color: #FFFFFF; font-size: 18px; font-weight: 600; margin-bottom: 10px; }
+    .help-title { color: #FFFFFF; font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+    /* ---- Micro-interacciones: transiciones suaves al pasar el mouse ---- */
+    .bl-card, .bl-mini-card, .help-card, .bl-section {
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .bl-card:hover, .bl-mini-card:hover, .help-card:hover {
+        transform: translateY(-2px);
+        border-color: #38BDF8 !important;
+        box-shadow: 0 4px 14px rgba(56,189,248,0.15) !important;
+    }
+    .stButton > button, [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"] {
+        transition: transform 0.12s ease, filter 0.12s ease !important;
+    }
+    .stButton > button:hover { transform: translateY(-1px); filter: brightness(1.08); }
     /* ---- Botones primarios y controles de acento: azul celeste en vez del rojo por defecto ---- */
     button[kind="primary"], button[kind="primaryFormSubmit"],
     [data-testid="stBaseButton-primary"], [data-testid="baseButton-primary"],
@@ -236,7 +255,7 @@ def _verificar_password(password, salt, hash_guardado):
 if 'usuarios_sistema' not in st.session_state:
     _salt_admin, _hash_admin = _hash_password("TaxFlow2026!")
     st.session_state.usuarios_sistema = {
-        "admin": {
+        "Administrador": {
             "salt": _salt_admin, "hash": _hash_admin, "rol": "Administrador",
             "bloqueado": False, "creado": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "ultimo_acceso": None, "intentos_fallidos": 0,
@@ -246,7 +265,6 @@ if 'sesion_autenticada' not in st.session_state: st.session_state.sesion_autenti
 if 'usuario_autenticado' not in st.session_state: st.session_state.usuario_autenticado = None
 
 if not st.session_state.sesion_autenticada:
-    st.warning(":orange[:material/key:] Usuario por defecto: **admin** — Contraseña: **TaxFlow2026!** — cámbiala en cuanto entres desde ':violet[:material/group:] Gestión de Usuarios'.")
     with st.form("form_login"):
         st.markdown("### :gray[:material/lock:] Iniciar Sesión")
         usuario_input = st.text_input("Usuario:")
@@ -528,9 +546,9 @@ def generar_dictamen_pdf(empresa, periodo, auditor, conciliado, banco_p, aux_p):
     plt.text(0.1, 0.78, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=11)
     plt.text(0.1, 0.75, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=11)
     plt.text(0.1, 0.72, f"Auditor Responsable: {auditor if auditor else 'No Especificado'}", fontsize=11)
-    plt.text(0.1, 0.60, f"(*) Capital Conciliado y Alineado: $ {conciliado:,.2f}", fontsize=11)
-    plt.text(0.1, 0.57, f"(*) Inconsistencias en Estado de Cuenta (Banco): $ {banco_p:,.2f}", fontsize=11)
-    plt.text(0.1, 0.54, f"(*) Inconsistencias en Libro Mayor (Auxiliar): $ {aux_p:,.2f}", fontsize=11)
+    plt.text(0.1, 0.60, f"(*) Capital Conciliado y Alineado: {moneda(conciliado)}", fontsize=11)
+    plt.text(0.1, 0.57, f"(*) Inconsistencias en Estado de Cuenta (Banco): {moneda(banco_p)}", fontsize=11)
+    plt.text(0.1, 0.54, f"(*) Inconsistencias en Libro Mayor (Auxiliar): {moneda(aux_p)}", fontsize=11)
     total_desfase = banco_p + aux_p
     riesgo_status = "CRÍTICO" if total_desfase > (conciliado * 0.05) else "ACEPTABLE"
     plt.text(0.1, 0.45, f"DICTAMEN FINAL DEL AUDITOR: REVISIÓN CON STATUS {riesgo_status}", fontsize=12, weight='bold', color='red' if riesgo_status == "CRÍTICO" else 'green')
@@ -605,6 +623,20 @@ def calcular_estado_modulos():
 def _pct(parte, total):
     return (parte / total * 100) if total else 0.0
 
+# Paleta corporativa compartida por defecto: se usa en las gráficas que NO
+# tienen un color semántico propio (como el mapa de colores por departamento
+# en Bancos, que sí debe conservar su propio significado).
+PALETA_CORPORATIVA = ["#38BDF8", "#818CF8", "#34D399", "#FBBF24", "#F472B6", "#FB923C", "#A78BFA", "#60A5FA"]
+
+def moneda(valor):
+    """Formatea un monto con el símbolo de la divisa elegida en Configuración
+    (MXN/USD/EUR), en vez de tener '$' fijo repetido por toda la app."""
+    simbolo = {"MXN ($)": "$", "USD ($)": "$", "EUR (€)": "€"}.get(st.session_state.divisa, "$")
+    try:
+        return f"{simbolo} {float(valor):,.2f}"
+    except (TypeError, ValueError):
+        return f"{simbolo} 0.00"
+
 def construir_clasificacion_pendientes():
     """
     Combina bancos_pendientes + auxiliar_pendientes en una sola tabla con una
@@ -660,6 +692,62 @@ def construir_clasificacion_pendientes():
     columnas_frente = ["Origen", "Departamento", "_Fecha_Norm", "_Monto_Norm"]
     resto = [c for c in df_combinado.columns if c not in columnas_frente]
     return _sanear_para_editor(df_combinado[columnas_frente + resto])
+
+def generar_resumen_ejecutivo_pdf(empresa, periodo, auditor):
+    """Reporte de una página que consolida el estado de los 8 módulos de
+    conciliación (a diferencia del Dictamen Formal, que solo cubre Bancos)."""
+    estado = calcular_estado_modulos()
+    tk, rc = estado["tasks"], estado["recs"]
+
+    fig, ax = plt.subplots(figsize=(8.5, 11))
+    ax.axis('off')
+    plt.text(0.1, 0.95, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=16, weight='bold', color='#0EA5E9')
+    plt.text(0.1, 0.925, "RESUMEN EJECUTIVO CONSOLIDADO — TODOS LOS MÓDULOS", fontsize=12, weight='bold')
+    plt.text(0.1, 0.90, "-" * 118, color='gray')
+    plt.text(0.1, 0.86, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=10)
+    plt.text(0.1, 0.835, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=10)
+    plt.text(0.1, 0.81, f"Auditor Responsable: {auditor if auditor else 'No Especificado'}", fontsize=10)
+    plt.text(0.1, 0.785, f"Fecha de Emisión: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", fontsize=10)
+
+    plt.text(0.1, 0.74, f"Progreso general: {_pct(tk['completado'], tk['total']):.0f}%  ({tk['completado']} de {tk['total']} módulos completados)", fontsize=11, weight='bold')
+
+    y = 0.69
+    plt.text(0.1, y, "Módulo", fontsize=10, weight='bold')
+    plt.text(0.55, y, "Estado", fontsize=10, weight='bold')
+    plt.text(0.72, y, "Conciliado", fontsize=10, weight='bold')
+    plt.text(0.87, y, "Pendiente", fontsize=10, weight='bold')
+    y -= 0.02
+    plt.text(0.1, y, "-" * 118, color='gray')
+    y -= 0.03
+
+    colores_estado = {"Completado": "#059669", "En progreso": "#2563EB", "No preparado": "#D97706"}
+    for m in estado["modulos"]:
+        estado_m = "Completado" if m["ejecutado"] else ("En progreso" if m["cargado"] else "No preparado")
+        plt.text(0.1, y, m["nombre"], fontsize=9.5)
+        plt.text(0.55, y, estado_m, fontsize=9.5, color=colores_estado[estado_m], weight='bold')
+        plt.text(0.72, y, f"{m['n_ok']:,}" if m["ejecutado"] else "—", fontsize=9.5)
+        plt.text(0.87, y, f"{m['n_pend']:,}" if m["ejecutado"] else "—", fontsize=9.5)
+        y -= 0.032
+
+    y -= 0.03
+    plt.text(0.1, y, "-" * 118, color='gray')
+    y -= 0.04
+    diferencia_total = st.session_state.suma_banco_p + st.session_state.suma_aux_p
+    if st.session_state.saldos_discrepancias is not None and not st.session_state.saldos_discrepancias.empty:
+        diferencia_total += st.session_state.saldos_discrepancias['Diferencia_Calculada'].abs().sum()
+    plt.text(0.1, y, f"Capital Conciliado (Bancos): {moneda(st.session_state.suma_conciliado)}", fontsize=10)
+    y -= 0.028
+    plt.text(0.1, y, f"Diferencia sin Identificar (consolidada): {moneda(diferencia_total)}", fontsize=10)
+    y -= 0.028
+    plt.text(0.1, y, f"Partidas totales (Recs) en el sistema: {rc['total']:,}  ·  No preparadas: {rc['no_prep']:,}  ·  Completadas: {rc['completado']:,}", fontsize=10)
+
+    y -= 0.06
+    plt.text(0.1, y, "Este resumen es informativo y no sustituye el Dictamen Formal de Auditoría del módulo Bancos.", fontsize=8, color='gray', style='italic')
+
+    pdf_buffer = io.BytesIO()
+    plt.savefig(pdf_buffer, format='pdf', bbox_inches='tight', dpi=300)
+    plt.close()
+    return pdf_buffer.getvalue()
 
 def render_dashboard():
     st.write("")
@@ -766,7 +854,7 @@ def render_dashboard():
     with mc3:
         st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#F79009;">
             <div class="bl-mini-title">Diferencia sin Identificar</div>
-            <div class="bl-mini-value">$ {diferencia_sin_identificar:,.2f}</div>
+            <div class="bl-mini-value">{moneda(diferencia_sin_identificar)}</div>
         </div>""", unsafe_allow_html=True)
     with mc4:
         st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#12B76A;">
@@ -822,13 +910,19 @@ def render_dashboard():
         st.markdown(f"<div class='kpi-card {clase_semaforo}'>{mensaje_semaforo} ({porcentaje_riesgo:.2f}% desfase)</div>", unsafe_allow_html=True)
         
         m1, m2, m3 = st.columns(3)
-        m1.metric("Capital Conciliado", f"$ {st.session_state.suma_conciliado:,.2f}")
-        m2.metric("Pendientes Banco", f"$ {st.session_state.suma_banco_p:,.2f}", delta_color="inverse")
-        m3.metric("Pendientes Auxiliar", f"$ {st.session_state.suma_aux_p:,.2f}", delta_color="inverse")
+        m1.metric("Capital Conciliado", moneda(st.session_state.suma_conciliado))
+        m2.metric("Pendientes Banco", moneda(st.session_state.suma_banco_p), delta_color="inverse")
+        m3.metric("Pendientes Auxiliar", moneda(st.session_state.suma_aux_p), delta_color="inverse")
         
         pdf_dictamen = generar_dictamen_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor, st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p)
         st.download_button(label=":blue[:material/download:] Descargar Dictamen Certificado (PDF)", data=pdf_dictamen, file_name="Dictamen_Auditoria.pdf", mime="application/pdf", use_container_width=True)
     else: st.info(":blue[:material/diamond:] Suite Inicializada. Usa los módulos superiores para comenzar la auditoría.")
+
+    st.markdown("---")
+    st.markdown(f'<div class="section-header">{icono("clipboard")} Resumen Ejecutivo Consolidado</div>', unsafe_allow_html=True)
+    st.caption("A diferencia del Dictamen Formal (que solo cubre Bancos), este PDF de una página resume el estado de los 8 módulos de conciliación.")
+    pdf_resumen = generar_resumen_ejecutivo_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor)
+    st.download_button(label=":violet[:material/download:] Descargar Resumen Ejecutivo (PDF, 8 módulos)", data=pdf_resumen, file_name="Resumen_Ejecutivo_TaxFlow.pdf", mime="application/pdf", use_container_width=True)
 
 # ==============================================================================
 # CONFIGURACIÓN COMPLETA RESTAURADA CON BOTONES DE RESPALDO JSON
@@ -958,6 +1052,8 @@ def render_bancos():
             if col_rfc_a != "Ninguna" and not df_a[~df_a[col_rfc_a].apply(validar_rfc)].empty: st.warning(":orange[:material/warning:] RFCs inválidos en Auxiliar.")
 
         if st.button(":green[:material/play_arrow:] Ejecutar Algoritmo de Conciliación Diamond", type="primary", use_container_width=True):
+            _spinner_bancos = st.empty()
+            _spinner_bancos.info(":blue[:material/autorenew:] Conciliando partidas, un momento…")
             try:
                 if usa_cargos_abonos:
                     df_b_ejec, df_a_ejec = df_b.copy(), df_a.copy()
@@ -997,8 +1093,10 @@ def render_bancos():
                 st.session_state.bancos_clasificacion_pendientes = construir_clasificacion_pendientes()
                 st.session_state.pop("editor_clasificacion_bancos", None)
                 registrar_evento("Bancos vs Auxiliar", f"Ejecutó la conciliación ({resultado['resumen']['num_exactos']} exactos, {resultado['resumen']['num_aproximados']} aproximados, {resultado['resumen']['num_pendientes_banco']+resultado['resumen']['num_pendientes_auxiliar']} pendientes)")
+                _spinner_bancos.empty()
                 st.rerun()
             except Exception as e:
+                _spinner_bancos.empty()
                 st.error(f":orange[:material/warning:] No se pudo ejecutar la conciliación. Revisa que las columnas de fecha y monto sean correctas. Detalle: {e}")
         if st.session_state.bancos_ejecutado:
             # Aseguramos que la tabla de clasificación exista sin importar en
@@ -1072,7 +1170,7 @@ def render_bancos():
                             st.markdown(f"""<div class="bl-mini-card" style="border-top-color:{color}; {sombra}">
                                 <div class="bl-mini-title">{depto_tarjeta}</div>
                                 <div class="bl-mini-value">{int(fila['Partidas'])} partidas</div>
-                                <div class="bl-card-sub">$ {fila['Monto_Total']:,.2f}</div>
+                                <div class="bl-card-sub">{moneda(fila['Monto_Total'])}</div>
                             </div>""", unsafe_allow_html=True)
                             if st.button(":material/filter_list: Ver pendientes", key=f"filtro_tarjeta_{depto_tarjeta}", use_container_width=True):
                                 st.session_state.bancos_departamento_manual = depto_tarjeta
@@ -1250,6 +1348,8 @@ def render_xml():
         with cx3: cont_m = st.selectbox("Monto Auxiliar Gasto:", df_cg.columns, key="cont_m")
         with cx4: cont_f = st.selectbox("Fecha Auxiliar Gasto:", df_cg.columns, key="cont_f")
         if st.button(":green[:material/play_arrow:] Cruce XML vs Contabilidad", type="primary", use_container_width=True):
+            _spinner_xml = st.empty()
+            _spinner_xml.info(":blue[:material/autorenew:] Cruzando XML contra contabilidad, un momento…")
             try:
                 resultado = conciliar_dos_fuentes(
                     df_banco=df_xml, df_auxiliar=df_cg,
@@ -1263,8 +1363,10 @@ def render_xml():
                 st.session_state.xml_pend_aux = resultado["pendientes_auxiliar"]
                 st.session_state.xml_ejecutado = True
                 registrar_evento("XML vs Contabilidad", f"Ejecutó el cruce ({len(resultado['conciliados'])} conciliadas, {len(resultado['pendientes_banco'])+len(resultado['pendientes_auxiliar'])} pendientes)")
+                _spinner_xml.empty()
                 st.rerun()
             except Exception as e:
+                _spinner_xml.empty()
                 st.error(f":orange[:material/warning:] No se pudo cruzar XML vs Contabilidad. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.xml_ejecutado:
             if 'Tipo_Match' in st.session_state.xml_conciliados.columns and not st.session_state.xml_conciliados.empty:
@@ -1294,6 +1396,8 @@ def render_saldos():
         df_sg, df_fd = st.session_state.df_saldos_globales, st.session_state.df_facturas_detalle
         col_s1, col_s2, col_s3 = st.columns(3); id_cte = st.selectbox("Columna Identificador (Código/RFC):", df_sg.columns, key="id_cte_new"); sg_m = st.selectbox("Monto Saldo Global Contable:", df_sg.columns, key="sg_m_new"); fd_m = st.selectbox("Monto Factura en Desglose:", df_fd.columns, key="fd_m_new")
         if st.button(":green[:material/play_arrow:] Ejecutar Cruce de Antigüedad de Saldos", type="primary", use_container_width=True):
+            _spinner_saldos = st.empty()
+            _spinner_saldos.info(":blue[:material/autorenew:] Cruzando antigüedad de saldos, un momento…")
             df_sg_num = df_sg.copy()
             df_sg_num[sg_m] = pd.to_numeric(df_sg_num[sg_m], errors='coerce').fillna(0)
             # Agrupamos también el lado de saldos globales por cliente: si el ERP
@@ -1312,6 +1416,7 @@ def render_saldos():
             st.session_state.saldos_discrepancias = df_cruce[df_cruce['Diferencia_Calculada'].abs() > st.session_state.tolerancia]
             st.session_state.saldos_ejecutado = True
             registrar_evento("Clientes y Proveedores", f"Ejecutó el cruce de antigüedad ({len(st.session_state.saldos_conciliados)} correctos, {len(st.session_state.saldos_discrepancias)} discrepancias)")
+            _spinner_saldos.empty()
             st.rerun()
         if st.session_state.saldos_ejecutado:
             t_s1, t_s2 = st.tabs([":green[:material/check_circle:] Saldos Correctos", ":orange[:material/warning:] Discrepancias Encontradas"])
@@ -1338,6 +1443,8 @@ def render_multidivisa():
         with col_v4: dn_f = st.selectbox("Fecha (MXN):", df_nac.columns, key="dn_f_new")
         st.caption("ℹ️ El monto en USD se convierte primero a MXN con el tipo de cambio de arriba, y ESE valor convertido es el que se concilia contra tu registro en pesos (antes se comparaban los números crudos de ambas monedas, lo cual no tiene sentido matemático).")
         if st.button(":green[:material/play_arrow:] Calcular Fluctuación Cambiaria Analítica", type="primary", use_container_width=True):
+            _spinner_divisa = st.empty()
+            _spinner_divisa.info(":blue[:material/autorenew:] Calculando fluctuación cambiaria, un momento…")
             try:
                 df_ext_c = df_ext.copy()
                 df_ext_c['Monto_Convertido_MXN'] = pd.to_numeric(df_ext_c[de_m], errors='coerce').fillna(0).abs() * float(st.session_state.tc_auditoria_val)
@@ -1363,8 +1470,10 @@ def render_multidivisa():
                 st.session_state.divisa_pend_nac = resultado["pendientes_auxiliar"]
                 st.session_state.divisa_ejecutado = True
                 registrar_evento("Multidivisa USD", f"Calculó fluctuación cambiaria ({len(conciliados)} conciliadas, TC={st.session_state.tc_auditoria_val})")
+                _spinner_divisa.empty()
                 st.rerun()
             except Exception as e:
+                _spinner_divisa.empty()
                 st.error(f":orange[:material/warning:] No se pudo calcular la fluctuación cambiaria. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.divisa_ejecutado:
             tolerancia_cambiaria_mostrar = max(float(st.session_state.tolerancia), float(st.session_state.tc_auditoria_val) * 0.02)
@@ -1402,6 +1511,8 @@ def render_nomina():
         with cn3: na_m = st.selectbox("Monto Libros:", df_na.columns, key="na_m")
         with cn4: na_f = st.selectbox("Fecha Libros:", df_na.columns, key="na_f")
         if st.button(":green[:material/play_arrow:] Conciliar Nóminas", type="primary", use_container_width=True):
+            _spinner_nomina = st.empty()
+            _spinner_nomina.info(":blue[:material/autorenew:] Conciliando nómina, un momento…")
             try:
                 resultado = conciliar_dos_fuentes(
                     df_banco=df_nx, df_auxiliar=df_na,
@@ -1415,8 +1526,10 @@ def render_nomina():
                 st.session_state.nomina_pend_aux = resultado["pendientes_auxiliar"]
                 st.session_state.nomina_ejecutado = True
                 registrar_evento("Nómina CFDI", f"Conciló nómina ({len(resultado['conciliados'])} recibos conciliados)")
+                _spinner_nomina.empty()
                 st.rerun()
             except Exception as e:
+                _spinner_nomina.empty()
                 st.error(f":orange[:material/warning:] No se pudo conciliar la nómina. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.nomina_ejecutado:
             if 'Tipo_Match' in st.session_state.nomina_conciliados.columns and not st.session_state.nomina_conciliados.empty:
@@ -1452,6 +1565,8 @@ def render_inventarios():
         with cli2: if_q = st.selectbox("Cant Física:", df_inf.columns, key="if_q")
         with cli3: ke_q = st.selectbox("Cant ERP:", df_ke.columns, key="ke_q")
         if st.button(":green[:material/play_arrow:] Auditar Almacenes", type="primary", use_container_width=True):
+            _spinner_inventarios = st.empty()
+            _spinner_inventarios.info(":blue[:material/autorenew:] Auditando almacenes, un momento…")
             try:
                 df_inf_c = df_inf.copy()
                 df_ke_c = df_ke.copy()
@@ -1470,8 +1585,10 @@ def render_inventarios():
                 st.session_state.inventarios_discrepancias = df_cruce[df_cruce['Diferencia_Unidades'].abs() > st.session_state.tolerancia_inventario]
                 st.session_state.inventarios_ejecutado = True
                 registrar_evento("Inventarios", f"Auditó almacenes ({len(st.session_state.inventarios_conciliados)} SKUs correctos, {len(st.session_state.inventarios_discrepancias)} discrepancias)")
+                _spinner_inventarios.empty()
                 st.rerun()
             except Exception as e:
+                _spinner_inventarios.empty()
                 st.error(f":orange[:material/warning:] No se pudo auditar el almacén. Detalle: {e}")
         if st.session_state.inventarios_ejecutado:
             st.caption(f":blue[:material/search:] Tolerancia aplicada: ± {st.session_state.tolerancia_inventario:g} unidades por SKU (ajustable en Configuración).")
@@ -1503,6 +1620,8 @@ def render_iva():
         with civ3: ia_m = st.selectbox("Importe Papel IVA:", df_iva.columns, key="ia_m")
         with civ4: ia_f = st.selectbox("Fecha Papel IVA:", df_iva.columns, key="ia_f")
         if st.button(":green[:material/play_arrow:] Amarre IVA Flujo", type="primary", use_container_width=True):
+            _spinner_iva = st.empty()
+            _spinner_iva.info(":blue[:material/autorenew:] Amarrando IVA, un momento…")
             try:
                 resultado = conciliar_dos_fuentes(
                     df_banco=df_ivb, df_auxiliar=df_iva,
@@ -1516,8 +1635,10 @@ def render_iva():
                 st.session_state.iva_pend_aux = resultado["pendientes_auxiliar"]
                 st.session_state.iva_ejecutado = True
                 registrar_evento("IVA Flujo", f"Amarró IVA ({len(resultado['conciliados'])} partidas conciliadas)")
+                _spinner_iva.empty()
                 st.rerun()
             except Exception as e:
+                _spinner_iva.empty()
                 st.error(f":orange[:material/warning:] No se pudo amarrar el IVA. Revisa las columnas de fecha/monto. Detalle: {e}")
         if st.session_state.iva_ejecutado:
             if 'Tipo_Match' in st.session_state.iva_conciliados.columns and not st.session_state.iva_conciliados.empty:
@@ -1557,6 +1678,8 @@ def render_activo_fijo():
         fecha_corte = datetime.date.fromisoformat(fecha_corte_str) if fecha_corte_str else datetime.date.today()
         st.caption(f":blue[:material/calendar_month:] Fecha de corte usada para el cálculo: {fecha_corte.strftime('%d/%m/%Y')} (toma la Fecha Límite de Cierre configurada; si no hay una, usa hoy).")
         if st.button(":green[:material/play_arrow:] Calcular Depreciación Esperada", type="primary", use_container_width=True):
+            _spinner_af = st.empty()
+            _spinner_af.info(":blue[:material/autorenew:] Calculando depreciación, un momento…")
             try:
                 df_c = df_af.copy()
                 df_c['Valor_Original_Num'] = pd.to_numeric(df_c[af_valor], errors='coerce').fillna(0)
@@ -1580,8 +1703,10 @@ def render_activo_fijo():
                 st.session_state.af_discrepancias = df_c[df_c['Diferencia_Depreciacion'].abs() > st.session_state.tolerancia]
                 st.session_state.af_ejecutado = True
                 registrar_evento("Activo Fijo", f"Calculó depreciación esperada ({len(st.session_state.af_conciliados)} correctos, {len(st.session_state.af_discrepancias)} discrepancias)")
+                _spinner_af.empty()
                 st.rerun()
             except Exception as e:
+                _spinner_af.empty()
                 st.error(f":orange[:material/warning:] No se pudo calcular la depreciación. Revisa que las columnas de valor, fecha y vida útil sean correctas. Detalle: {e}")
         if st.session_state.af_ejecutado:
             buffer_af = io.BytesIO()
@@ -1640,8 +1765,8 @@ def render_razones():
                 st.metric(nombre, texto if valor is not None else "N/D")
 
         df_razones_graf = pd.DataFrame({"Razón": list(razones.keys()), "Valor": [v if v is not None else 0 for v in razones.values()]})
-        fig_razones = px.bar(df_razones_graf, x="Valor", y="Razón", orientation="h", title="Razones Financieras del Periodo", color="Valor", color_continuous_scale="Tealgrn")
-        fig_razones.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", showlegend=False, coloraxis_showscale=False, height=380)
+        fig_razones = px.bar(df_razones_graf, x="Valor", y="Razón", orientation="h", title="Razones Financieras del Periodo", color="Razón", color_discrete_sequence=PALETA_CORPORATIVA)
+        fig_razones.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", showlegend=False, height=380)
         with st.container(key="chartcard_razones", border=True):
             st.plotly_chart(fig_razones, use_container_width=True)
     else:
@@ -1803,7 +1928,7 @@ def render_gestion_usuarios():
     if st.session_state.rol_actual != "Administrador":
         st.info(":orange[:material/lightbulb:] El resto de este módulo (agregar, bloquear o eliminar usuarios) está restringido a usuarios con rol **Administrador**. Si necesitas uno de esos cambios, pídeselo a tu Administrador.")
         return
-    st.caption("Los usuarios viven en la memoria de este servidor mientras esté corriendo — no hay base de datos externa detrás. Si el servidor se reinicia, la lista vuelve a su estado inicial (solo el usuario admin).")
+    st.caption("Los usuarios viven en la memoria de este servidor mientras esté corriendo — no hay base de datos externa detrás. Si el servidor se reinicia, la lista vuelve a su estado inicial (solo el usuario Administrador).")
 
     st.markdown("#### :green[:material/add:] Agregar Usuario")
     with st.form("form_nuevo_usuario", clear_on_submit=True):
@@ -1957,6 +2082,12 @@ for col, (nombre_mod, _) in zip(cols_mod, pestanas_categoria):
 
 st.markdown("---")
 
+def _texto_sin_markup(texto):
+    """Quita los shortcodes :color[:material/x:] y deja solo el texto legible, para usarlo en el breadcrumb."""
+    return re.sub(r':[a-z]+\[:material/[a-z_]+:\]\s*', '', texto).strip()
+
+st.caption(f":gray[{_texto_sin_markup(st.session_state.categoria_activa_pill)}]  ›  **{_texto_sin_markup(st.session_state.modulo_activo_pill)}**")
+
 # Cada módulo tiene un cuerpo totalmente distinto en este mismo punto del
 # código. Sin un 'key' fijo, el navegador a veces intenta reconciliar el
 # árbol anterior con el nuevo y truena con
@@ -1966,3 +2097,9 @@ funcion_activa = dict(pestanas_categoria)[st.session_state.modulo_activo_pill]
 _clave_modulo = _clave_segura(st.session_state.modulo_activo_pill)
 with st.container(key=f"panel_modulo_{_clave_modulo}"):
     funcion_activa()
+
+# ==============================================================================
+# PIE DE PÁGINA
+# ==============================================================================
+st.markdown("---")
+st.caption(f":gray[TaxFlow-Diamond v2.4 · Enterprise Financial & XML Reconciliation Suite · Sesión: {st.session_state.usuario_autenticado or 'N/D'} ({st.session_state.rol_actual})]")
