@@ -374,9 +374,29 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### :blue[:material/search:] Rastreador Rápido de Auditoría")
 busqueda_rapida = st.sidebar.text_input("Ingresa monto o texto a rastrear:", placeholder="Ej. 15400.50 o Transferencia")
 
+def _deduplicar_columnas(df):
+    """Si el archivo trae columnas repetidas (mismo encabezado dos veces, o
+    columnas sin nombre que pandas autogenera como 'Unnamed: 0', 'Unnamed: 1'…
+    y que pueden coincidir al combinar dos archivos), les agrega un sufijo
+    para que todas queden con nombre único. st.data_editor truena con
+    'StreamlitAPIException' si le pasas un DataFrame con columnas duplicadas,
+    así que esto se corrige aquí, en el único punto por donde entran todos
+    los archivos de la app."""
+    columnas = pd.Series(df.columns, dtype="object")
+    for col_dup in columnas[columnas.duplicated()].unique():
+        indices = columnas[columnas == col_dup].index.tolist()
+        for posicion, idx in enumerate(indices):
+            if posicion == 0:
+                continue
+            columnas[idx] = f"{col_dup}_{posicion + 1}"
+    df = df.copy()
+    df.columns = columnas
+    return df
+
 def leer_archivo_contable(file):
-    if file.name.endswith('.csv'): return pd.read_csv(file)
-    return pd.read_excel(file)
+    if file.name.endswith('.csv'): df = pd.read_csv(file)
+    else: df = pd.read_excel(file)
+    return _deduplicar_columnas(df)
 
 def validar_rfc(rfc):
     pattern = r'^[A-Z&Ñ]{3,4}[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[A-Z0-9]{3}$'
@@ -1086,6 +1106,7 @@ def render_bancos():
                     st.markdown("---")
                     st.markdown(f'<div class="section-header">{icono("clipboard")} Editor de Clasificación por Departamento</div>', unsafe_allow_html=True)
                     st.caption("Incluye todas las columnas originales del estado de cuenta / auxiliar. Se guarda automáticamente en cada edición.")
+                    df_clasificado_actual = _deduplicar_columnas(df_clasificado_actual)
                     df_editado = st.data_editor(
                         df_clasificado_actual,
                         use_container_width=True,
