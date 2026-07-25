@@ -50,6 +50,11 @@ st.markdown("""
         border-color: #0EA5E9 !important;
         color: #0D1117 !important;
     }
+    /* Rectángulos bien redondeados en todos los botones (estilo "pastilla" de navegación) */
+    .stButton > button, [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"] {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+    }
     /* Punto de selección de los radio buttons (ej. el selector de categorías) */
     [data-baseweb="radio"] [aria-checked="true"] { border-color: #38BDF8 !important; }
     [data-baseweb="radio"] [aria-checked="true"] div { background-color: #38BDF8 !important; }
@@ -1916,19 +1921,48 @@ CATEGORIAS = {
 }
 
 st.markdown("---")
-categoria_activa = st.radio(
-    "Categoría:", list(CATEGORIAS.keys()), horizontal=True, label_visibility="collapsed", key="selector_categoria",
-)
-pestanas_categoria = CATEGORIAS[categoria_activa]
-# Cada categoría tiene una cantidad distinta de pestañas. Sin un 'key' fijo,
-# el navegador a veces intenta reconciliar el árbol de pestañas anterior con
-# el nuevo (que tiene otra forma) y truena con
-# "NotFoundError: Failed to execute 'removeChild'". Envolver cada categoría
-# en un contenedor con key único obliga a que se desmonte limpio el anterior
-# y se monte de cero el nuevo, en vez de intentar mezclarlos.
-_clave_categoria = re.sub(r'[^a-zA-Z0-9]+', '_', categoria_activa).strip('_').lower()
-with st.container(key=f"panel_categoria_{_clave_categoria}"):
-    objetos_tabs = st.tabs([nombre for nombre, _ in pestanas_categoria])
-    for tab_obj, (_, funcion_render) in zip(objetos_tabs, pestanas_categoria):
-        with tab_obj:
-            funcion_render()
+
+def _clave_segura(texto):
+    return re.sub(r'[^a-zA-Z0-9]+', '_', texto).strip('_').lower()
+
+# ---------- Navegación tipo "pastilla": rectángulos redondeados, el activo
+# en azul celeste (reutiliza el estilo de los botones type="primary") ----------
+if "categoria_activa_pill" not in st.session_state or st.session_state.categoria_activa_pill not in CATEGORIAS:
+    st.session_state.categoria_activa_pill = list(CATEGORIAS.keys())[0]
+
+cols_cat = st.columns(len(CATEGORIAS))
+for col, nombre_cat in zip(cols_cat, CATEGORIAS.keys()):
+    with col:
+        es_cat_activa = st.session_state.categoria_activa_pill == nombre_cat
+        if st.button(nombre_cat, key=f"navcat_{_clave_segura(nombre_cat)}", type="primary" if es_cat_activa else "secondary", use_container_width=True):
+            st.session_state.categoria_activa_pill = nombre_cat
+            # Al cambiar de categoría, arrancamos en el primer módulo de esa categoría.
+            st.session_state.modulo_activo_pill = CATEGORIAS[nombre_cat][0][0]
+            st.rerun()
+
+st.markdown("---")
+
+pestanas_categoria = CATEGORIAS[st.session_state.categoria_activa_pill]
+nombres_modulos = [nombre for nombre, _ in pestanas_categoria]
+if "modulo_activo_pill" not in st.session_state or st.session_state.modulo_activo_pill not in nombres_modulos:
+    st.session_state.modulo_activo_pill = nombres_modulos[0]
+
+cols_mod = st.columns(len(pestanas_categoria))
+for col, (nombre_mod, _) in zip(cols_mod, pestanas_categoria):
+    with col:
+        es_mod_activo = st.session_state.modulo_activo_pill == nombre_mod
+        if st.button(nombre_mod, key=f"navmod_{_clave_segura(nombre_mod)}", type="primary" if es_mod_activo else "secondary", use_container_width=True):
+            st.session_state.modulo_activo_pill = nombre_mod
+            st.rerun()
+
+st.markdown("---")
+
+# Cada módulo tiene un cuerpo totalmente distinto en este mismo punto del
+# código. Sin un 'key' fijo, el navegador a veces intenta reconciliar el
+# árbol anterior con el nuevo y truena con
+# "NotFoundError: Failed to execute 'removeChild'". Envolver cada módulo en
+# un contenedor con key único obliga a desmontar limpio el anterior.
+funcion_activa = dict(pestanas_categoria)[st.session_state.modulo_activo_pill]
+_clave_modulo = _clave_segura(st.session_state.modulo_activo_pill)
+with st.container(key=f"panel_modulo_{_clave_modulo}"):
+    funcion_activa()
