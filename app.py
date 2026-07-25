@@ -299,6 +299,8 @@ if st.sidebar.button(":gray[:material/lock:] Cerrar Sesión", type="primary", us
     _eventos_previos = st.session_state.bitacora_eventos
     for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
     st.session_state.bitacora_eventos = _eventos_previos  # conservamos la bitácora aunque se reinicien los datos de trabajo
+    for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
+        st.session_state.pop(llave_editor, None)
     st.session_state.sesion_autenticada = False
     st.session_state.usuario_autenticado = None
     st.rerun()
@@ -324,6 +326,8 @@ with st.sidebar.expander(":blue[:material/apartment:] Multiempresa (auditorías 
             if st.button(":blue[:material/folder_open:] Cargar", use_container_width=True, key="cargar_snapshot_btn"):
                 for llave, valor in _deserializar_estado(st.session_state.auditorias_guardadas[auditoria_elegida]).items():
                     st.session_state[llave] = valor
+                for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
+                    st.session_state.pop(llave_editor, None)
                 registrar_evento("Multiempresa", f"Cargó la auditoría '{auditoria_elegida}'")
                 st.rerun()
         with col_ae2:
@@ -804,6 +808,15 @@ def render_configuracion():
                     if llave == "usuarios_sistema" and not restaurar_usuarios:
                         continue
                     st.session_state[llave] = valor
+                # Los widgets st.data_editor guardan su propio estado interno de
+                # edición bajo su 'key', SEPARADO de la variable que les pasamos
+                # como 'value'. Si no lo limpiamos, en el próximo render tratan
+                # de reconciliar esa tabla vieja contra los datos recién
+                # restaurados (que pueden tener otra forma/filas) y truena con
+                # StreamlitAPIException. Al borrar su 'key', se reinicializan
+                # limpios usando directamente los datos restaurados.
+                for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
+                    st.session_state.pop(llave_editor, None)
                 registrar_evento("Configuración", f"Restauró la sesión desde un respaldo JSON (usuarios {'incluidos' if restaurar_usuarios else 'excluidos'})")
                 st.success(":green[:material/check:] Ecosistema restaurado desde el JSON con éxito.")
                 st.rerun()
@@ -818,7 +831,13 @@ def render_bancos():
         if b_file and a_file: st.session_state.df_banco = leer_archivo_contable(b_file); st.session_state.df_auxiliar = leer_archivo_contable(a_file); st.session_state.bancos_cargados = True; st.session_state.fase_progreso = 3; st.rerun()
     else:
         st.success(":green[:material/flag:] Insumos bancarios indexados.")
-        if st.button(":blue[:material/refresh:] Cargar nuevos archivos de banco", key="reset_b"): st.session_state.bancos_cargados, st.session_state.bancos_ejecutado = False, False; st.session_state.fase_progreso = 1; st.rerun()
+        if st.button(":blue[:material/refresh:] Cargar nuevos archivos de banco", key="reset_b"):
+            st.session_state.bancos_cargados, st.session_state.bancos_ejecutado = False, False
+            st.session_state.fase_progreso = 1
+            st.session_state.bancos_clasificacion_pendientes = None
+            st.session_state.bancos_departamento_manual = None
+            st.session_state.pop("editor_clasificacion_bancos", None)
+            st.rerun()
     if st.session_state.bancos_cargados:
         df_b, df_a = st.session_state.df_banco, st.session_state.df_auxiliar
 
@@ -889,6 +908,12 @@ def render_bancos():
                 st.session_state.suma_aux_p = resultado["resumen"]["suma_aux_pendiente"]
                 st.session_state.bancos_ejecutado = True
                 st.session_state.fase_progreso = 4
+                # Los pendientes acaban de cambiar (nueva corrida) -> reconstruimos
+                # la clasificación por departamento ahora mismo (conserva lo que
+                # siga coincidiendo) y limpiamos el estado del editor para que no
+                # choque con la tabla anterior.
+                st.session_state.bancos_clasificacion_pendientes = construir_clasificacion_pendientes()
+                st.session_state.pop("editor_clasificacion_bancos", None)
                 registrar_evento("Bancos vs Auxiliar", f"Ejecutó la conciliación ({resultado['resumen']['num_exactos']} exactos, {resultado['resumen']['num_aproximados']} aproximados, {resultado['resumen']['num_pendientes_banco']+resultado['resumen']['num_pendientes_auxiliar']} pendientes)")
                 st.rerun()
             except Exception as e:
@@ -948,6 +973,7 @@ def render_bancos():
 
                     if st.button(":blue[:material/refresh:] Recalcular tabla de pendientes", key="recalcular_clasificacion"):
                         st.session_state.bancos_clasificacion_pendientes = construir_clasificacion_pendientes()
+                        st.session_state.pop("editor_clasificacion_bancos", None)
                         st.rerun()
 
                     df_editado_dash = df_clasificado_actual
