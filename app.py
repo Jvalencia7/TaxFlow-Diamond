@@ -36,7 +36,30 @@ st.markdown("""
     .kpi-red { background-color: #E74C3C !important; }
     .help-card { background-color: #161B22; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #00D4FF; }
     .help-title { color: #FFFFFF; font-size: 18px; font-weight: 600; margin-bottom: 10px; }
-    div.stButton > button:first-child[data-testid="stSidebarActionButton"] { background-color: #00D4FF !important; color: #0D1117 !important; font-weight: 700 !important; border: none !important; }
+    /* ---- Botones primarios y controles de acento: azul celeste en vez del rojo por defecto ---- */
+    button[kind="primary"], button[kind="primaryFormSubmit"],
+    [data-testid="stBaseButton-primary"], [data-testid="baseButton-primary"],
+    [data-testid="stBaseButton-primaryFormSubmit"], [data-testid="baseButton-primaryFormSubmit"] {
+        background-color: #38BDF8 !important;
+        border-color: #38BDF8 !important;
+        color: #0D1117 !important;
+    }
+    button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover,
+    [data-testid="stBaseButton-primary"]:hover, [data-testid="baseButton-primary"]:hover {
+        background-color: #0EA5E9 !important;
+        border-color: #0EA5E9 !important;
+        color: #0D1117 !important;
+    }
+    /* Punto de selección de los radio buttons (ej. el selector de categorías) */
+    [data-baseweb="radio"] [aria-checked="true"] { border-color: #38BDF8 !important; }
+    [data-baseweb="radio"] [aria-checked="true"] div { background-color: #38BDF8 !important; }
+    [data-baseweb="radio"] [aria-checked="true"] ~ div { color: #38BDF8 !important; }
+
+    /* Indicador (línea) y texto de la pestaña activa dentro de st.tabs */
+    [data-testid="stTabs"] [aria-selected="true"] { color: #38BDF8 !important; }
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"] { background-color: #38BDF8 !important; }
+    [data-testid="stTabs"] [data-baseweb="tab-border"] { background-color: #38BDF8 !important; }
+    button[data-baseweb="tab"][aria-selected="true"] { color: #38BDF8 !important; }
 
     /* ---- Estilo Dashboard tipo BlackLine (versión oscura) ---- */
     .bl-wrapper { background-color: #0D1117; padding: 24px; border-radius: 14px; }
@@ -134,7 +157,7 @@ def punto(color, size=9):
     return f'<span style="display:inline-block;width:{size}px;height:{size}px;border-radius:50%;background:{color};margin-right:7px;"></span>'
 
 
-st.markdown(f'<div class="main-title">{icono("diamond", 32)} TaxFlow-Diamond</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
 
 # ==============================================================================
@@ -229,7 +252,7 @@ if not st.session_state.sesion_autenticada:
             st.error("Usuario o contraseña incorrectos.")
         elif registro_usuario["bloqueado"] or registro_usuario["intentos_fallidos"] >= 5:
             registro_usuario["bloqueado"] = True
-            st.error(":red[:material/block:] Este usuario está bloqueado. Contacta a un Administrador.")
+            st.error(":blue[:material/block:] Este usuario está bloqueado. Contacta a un Administrador.")
         elif _verificar_password(password_input, registro_usuario["salt"], registro_usuario["hash"]):
             st.session_state.sesion_autenticada = True
             st.session_state.usuario_autenticado = usuario_input
@@ -247,7 +270,7 @@ if not st.session_state.sesion_autenticada:
             registro_usuario["intentos_fallidos"] += 1
             if registro_usuario["intentos_fallidos"] >= 5:
                 registro_usuario["bloqueado"] = True
-                st.error(":red[:material/block:] Demasiados intentos fallidos: este usuario quedó bloqueado automáticamente. Contacta a un Administrador.")
+                st.error(":blue[:material/block:] Demasiados intentos fallidos: este usuario quedó bloqueado automáticamente. Contacta a un Administrador.")
             else:
                 st.error(f"Usuario o contraseña incorrectos. Intento {registro_usuario['intentos_fallidos']}/5 antes del bloqueo automático.")
     st.stop()
@@ -303,7 +326,7 @@ with st.sidebar.expander(":blue[:material/apartment:] Multiempresa (auditorías 
                 registrar_evento("Multiempresa", f"Cargó la auditoría '{auditoria_elegida}'")
                 st.rerun()
         with col_ae2:
-            if st.button(":red[:material/delete:] Eliminar", use_container_width=True, key="eliminar_snapshot_btn"):
+            if st.button(":blue[:material/delete:] Eliminar", use_container_width=True, key="eliminar_snapshot_btn"):
                 del st.session_state.auditorias_guardadas[auditoria_elegida]
                 st.rerun()
     else:
@@ -372,12 +395,30 @@ def _serializar_estado(diccionario):
     resultado = {}
     for llave, valor in diccionario.items():
         if isinstance(valor, pd.DataFrame):
-            resultado[llave] = {"tipo": "dataframe", "datos": valor.to_json(orient='split')}
+            resultado[llave] = {"tipo": "dataframe", "datos": _dataframe_a_json_seguro(valor)}
         elif llave == 'logo_bytes' and valor is not None:
             resultado[llave] = {"tipo": "bytes", "datos": valor.hex()}
         else:
             resultado[llave] = {"tipo": "nativo", "datos": valor}
     return resultado
+
+def _dataframe_a_json_seguro(df):
+    """to_json() de pandas convierte objetos date/datetime SUELTOS (columnas
+    dtype='object' con valores datetime.date, como nuestra '_Fecha_Norm') en
+    números epoch en vez de fechas legibles, y al restaurar quedan como
+    enteros irreconocibles — rompiendo tanto la vista como cualquier
+    comparación de fechas posterior (ej. el 'recordar' la clasificación por
+    departamento). Por eso convertimos esas columnas a texto ISO ANTES de
+    serializar, así el viaje por JSON es transparente."""
+    df_seguro = df.copy()
+    for columna in df_seguro.columns:
+        if df_seguro[columna].dtype == "object":
+            contiene_fechas = df_seguro[columna].apply(lambda v: isinstance(v, (datetime.date, datetime.datetime))).any()
+            if contiene_fechas:
+                df_seguro[columna] = df_seguro[columna].apply(
+                    lambda v: v.isoformat() if isinstance(v, (datetime.date, datetime.datetime)) else v
+                )
+    return df_seguro.to_json(orient='split')
 
 def _deserializar_estado(paquete):
     """Inverso de _serializar_estado."""
@@ -517,12 +558,16 @@ def construir_clasificacion_pendientes():
 
     previo = s.bancos_clasificacion_pendientes
     if previo is not None and not previo.empty and "Departamento" in previo.columns:
-        mapa_previo = {
-            (r["Origen"], r["_Fecha_Norm"], r["_Monto_Norm"]): r["Departamento"]
-            for _, r in previo.iterrows()
-        }
+        # Normalizamos Fecha a texto y Monto a float redondeado en AMBOS lados
+        # de la comparación: si 'previo' viene de un respaldo JSON restaurado,
+        # _Fecha_Norm puede llegar como texto ISO en vez de un objeto date, y
+        # sin esta normalización el emparejamiento fallaría silenciosamente
+        # (la clasificación 'se perdería' aunque los datos siguieran ahí).
+        def _clave(fila):
+            return (str(fila["Origen"]), str(fila["_Fecha_Norm"])[:10], round(float(fila["_Monto_Norm"]), 2))
+        mapa_previo = {_clave(r): r["Departamento"] for _, r in previo.iterrows()}
         df_combinado["Departamento"] = df_combinado.apply(
-            lambda r: mapa_previo.get((r["Origen"], r["_Fecha_Norm"], r["_Monto_Norm"]), "Sin Asignar"), axis=1
+            lambda r: mapa_previo.get(_clave(r), "Sin Asignar"), axis=1
         )
 
     columnas_frente = ["Origen", "Departamento", "_Fecha_Norm", "_Monto_Norm"]
@@ -543,7 +588,7 @@ def render_dashboard():
             if dias_restantes >= 0:
                 dias_label, dias_color = "días restantes", "#101828"
             else:
-                dias_restantes, dias_label, dias_color = abs(dias_restantes), "días de atraso", "#B42318"
+                dias_restantes, dias_label, dias_color = abs(dias_restantes), "días de atraso", "#F97316"
         except ValueError:
             pass
 
@@ -625,7 +670,7 @@ def render_dashboard():
             <div class="bl-mini-value">{rc['no_prep']:,}</div>
         </div>""", unsafe_allow_html=True)
     with mc2:
-        color_atraso = "#B42318" if (dias_restantes is not None and dias_label == "días de atraso") else "#12B76A"
+        color_atraso = "#F97316" if (dias_restantes is not None and dias_label == "días de atraso") else "#12B76A"
         texto_atraso = f"{dias_restantes} días" if dias_restantes is not None else "N/D"
         st.markdown(f"""<div class="bl-mini-card" style="border-top-color:{color_atraso};">
             <div class="bl-mini-title">{dias_label.capitalize() if dias_restantes is not None else 'Atraso de cierre'}</div>
@@ -775,11 +820,30 @@ def render_bancos():
         if st.button(":blue[:material/refresh:] Cargar nuevos archivos de banco", key="reset_b"): st.session_state.bancos_cargados, st.session_state.bancos_ejecutado = False, False; st.session_state.fase_progreso = 1; st.rerun()
     if st.session_state.bancos_cargados:
         df_b, df_a = st.session_state.df_banco, st.session_state.df_auxiliar
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: cb_m = st.selectbox("Monto BANCO:", df_b.columns, key="cb_m")
-        with c2: cb_f = st.selectbox("Fecha BANCO:", df_b.columns, key="cb_f")
-        with c3: ca_m = st.selectbox("Monto AUXILIAR:", df_a.columns, key="ca_m")
-        with c4: ca_f = st.selectbox("Fecha AUXILIAR:", df_a.columns, key="ca_f")
+
+        modo_montos = st.radio(
+            "¿Cómo vienen los montos en tus archivos?",
+            ["Una sola columna de Monto", "Columnas separadas de Cargos y Abonos"],
+            horizontal=True, key="modo_montos_bancos",
+        )
+        usa_cargos_abonos = modo_montos == "Columnas separadas de Cargos y Abonos"
+
+        if usa_cargos_abonos:
+            st.caption(":blue[:material/info:] Se concilian Cargos y Abonos en un solo pase (Monto Neto = Abono − Cargo), respetando el signo — así un cargo nunca se cruza por error con un abono del mismo importe.")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: cb_cargo = st.selectbox("Cargos BANCO:", df_b.columns, key="cb_cargo")
+            with c2: cb_abono = st.selectbox("Abonos BANCO:", df_b.columns, key="cb_abono")
+            with c3: ca_cargo = st.selectbox("Cargos AUXILIAR:", df_a.columns, key="ca_cargo")
+            with c4: ca_abono = st.selectbox("Abonos AUXILIAR:", df_a.columns, key="ca_abono")
+            c5, c6 = st.columns(2)
+            with c5: cb_f = st.selectbox("Fecha BANCO:", df_b.columns, key="cb_f_ca")
+            with c6: ca_f = st.selectbox("Fecha AUXILIAR:", df_a.columns, key="ca_f_ca")
+        else:
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: cb_m = st.selectbox("Monto BANCO:", df_b.columns, key="cb_m")
+            with c2: cb_f = st.selectbox("Fecha BANCO:", df_b.columns, key="cb_f")
+            with c3: ca_m = st.selectbox("Monto AUXILIAR:", df_a.columns, key="ca_m")
+            with c4: ca_f = st.selectbox("Fecha AUXILIAR:", df_a.columns, key="ca_f")
         
         st.markdown("---")
         st.subheader(":violet[:material/shield:] Panel de Pre-Validación de Insumos")
@@ -793,20 +857,32 @@ def render_bancos():
 
         if st.button(":green[:material/play_arrow:] Ejecutar Algoritmo de Conciliación Diamond", type="primary", use_container_width=True):
             try:
+                if usa_cargos_abonos:
+                    df_b_ejec, df_a_ejec = df_b.copy(), df_a.copy()
+                    df_b_ejec["_Monto_Neto"] = pd.to_numeric(df_b_ejec[cb_abono], errors="coerce").fillna(0) - pd.to_numeric(df_b_ejec[cb_cargo], errors="coerce").fillna(0)
+                    df_a_ejec["_Monto_Neto"] = pd.to_numeric(df_a_ejec[ca_abono], errors="coerce").fillna(0) - pd.to_numeric(df_a_ejec[ca_cargo], errors="coerce").fillna(0)
+                    col_monto_banco_final, col_monto_aux_final = "_Monto_Neto", "_Monto_Neto"
+                    preservar_signo_final = True
+                else:
+                    df_b_ejec, df_a_ejec = df_b, df_a
+                    col_monto_banco_final, col_monto_aux_final = cb_m, ca_m
+                    preservar_signo_final = False
+
                 resultado = conciliar_dos_fuentes(
-                    df_banco=df_b, df_auxiliar=df_a,
-                    col_monto_banco=cb_m, col_fecha_banco=cb_f,
-                    col_monto_aux=ca_m, col_fecha_aux=ca_f,
+                    df_banco=df_b_ejec, df_auxiliar=df_a_ejec,
+                    col_monto_banco=col_monto_banco_final, col_fecha_banco=cb_f,
+                    col_monto_aux=col_monto_aux_final, col_fecha_aux=ca_f,
                     tolerancia_monto=float(st.session_state.tolerancia),
                     tolerancia_dias=int(st.session_state.tolerancia_dias),
+                    preservar_signo=preservar_signo_final,
                 )
                 st.session_state.df_conciliados = resultado["conciliados"]
                 st.session_state.bancos_pendientes = resultado["pendientes_banco"]
                 st.session_state.auxiliar_pendientes = resultado["pendientes_auxiliar"]
                 st.session_state.bancos_col_fecha_banco = cb_f
                 st.session_state.bancos_col_fecha_aux = ca_f
-                st.session_state.bancos_col_monto_banco = cb_m
-                st.session_state.bancos_col_monto_aux = ca_m
+                st.session_state.bancos_col_monto_banco = col_monto_banco_final
+                st.session_state.bancos_col_monto_aux = col_monto_aux_final
                 st.session_state.suma_conciliado = resultado["resumen"]["suma_conciliado"]
                 st.session_state.suma_banco_p = resultado["resumen"]["suma_banco_pendiente"]
                 st.session_state.suma_aux_p = resultado["resumen"]["suma_aux_pendiente"]
@@ -875,6 +951,11 @@ def render_bancos():
                     return [f"background-color:{color}22; color:#E6EDF3"] * len(fila)
                 st.markdown("###### Vista con color por departamento")
                 st.dataframe(df_editado.style.apply(_color_fila, axis=1), use_container_width=True)
+
+                # Marcador de posición: el detalle filtrado se escribe más abajo en
+                # el código (después de leer los clics de tarjetas y gráficas), pero
+                # visualmente aparece EN ESTE PUNTO — arriba de las tarjetas.
+                marcador_drilldown = st.empty()
 
                 # ---------- Tarjetas por departamento (clicables) ----------
                 resumen_dep = df_editado.groupby("Departamento").agg(Partidas=("_Monto_Norm", "count"), Monto_Total=("_Monto_Norm", "sum")).reset_index()
@@ -969,32 +1050,33 @@ def render_bancos():
                 departamento_final = departamento_click or st.session_state.bancos_departamento_manual
 
                 if departamento_final:
-                    st.markdown("---")
-                    color_sel = colores_dep.get(departamento_final, "#6B7280")
-                    st.markdown(
-                        f'<div class="section-header">{icono("clipboard")} Pendientes por Registrar — '
-                        f'<span style="color:{color_sel};">{departamento_final}</span></div>',
-                        unsafe_allow_html=True,
-                    )
-                    filtro = df_editado[df_editado["Departamento"] == departamento_final]
-                    filas_banco = filtro[filtro["Origen"] == "Banco"]
-                    filas_aux = filtro[filtro["Origen"] == "Auxiliar"]
+                    with marcador_drilldown.container():
+                        color_sel = colores_dep.get(departamento_final, "#6B7280")
+                        st.markdown(
+                            f'<div class="section-header">{icono("clipboard")} Pendientes por Registrar — '
+                            f'<span style="color:{color_sel};">{departamento_final}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                        filtro = df_editado[df_editado["Departamento"] == departamento_final]
+                        filas_banco = filtro[filtro["Origen"] == "Banco"]
+                        filas_aux = filtro[filtro["Origen"] == "Auxiliar"]
 
-                    dcol1, dcol2 = st.columns(2)
-                    with dcol1:
-                        st.markdown("###### :blue[:material/account_balance:] Tal cual aparece en el Estado de Cuenta")
-                        if not filas_banco.empty and st.session_state.df_banco is not None:
-                            columnas_banco = [c for c in st.session_state.df_banco.columns if c in filas_banco.columns]
-                            st.dataframe(filas_banco[columnas_banco], use_container_width=True)
-                        else:
-                            st.caption("Sin pendientes de banco en este departamento.")
-                    with dcol2:
-                        st.markdown("###### :blue[:material/menu_book:] Tal cual aparece en el Auxiliar Contable")
-                        if not filas_aux.empty and st.session_state.df_auxiliar is not None:
-                            columnas_aux = [c for c in st.session_state.df_auxiliar.columns if c in filas_aux.columns]
-                            st.dataframe(filas_aux[columnas_aux], use_container_width=True)
-                        else:
-                            st.caption("Sin pendientes de auxiliar en este departamento.")
+                        dcol1, dcol2 = st.columns(2)
+                        with dcol1:
+                            st.markdown("###### :blue[:material/account_balance:] Tal cual aparece en el Estado de Cuenta")
+                            if not filas_banco.empty and st.session_state.df_banco is not None:
+                                columnas_banco = [c for c in st.session_state.df_banco.columns if c in filas_banco.columns]
+                                st.dataframe(filas_banco[columnas_banco], use_container_width=True)
+                            else:
+                                st.caption("Sin pendientes de banco en este departamento.")
+                        with dcol2:
+                            st.markdown("###### :blue[:material/menu_book:] Tal cual aparece en el Auxiliar Contable")
+                            if not filas_aux.empty and st.session_state.df_auxiliar is not None:
+                                columnas_aux = [c for c in st.session_state.df_auxiliar.columns if c in filas_aux.columns]
+                                st.dataframe(filas_aux[columnas_aux], use_container_width=True)
+                            else:
+                                st.caption("Sin pendientes de auxiliar en este departamento.")
+                        st.markdown("---")
 
 def render_xml():
     st.write("")
@@ -1435,10 +1517,13 @@ def render_sat():
         },
         key="sat_editor",
     )
-    if st.button(":blue[:material/save:] Guardar Checklist SAT", use_container_width=True, key="guardar_sat"):
-        st.session_state.sat_checklist = df_sat_editado
+    # Se guarda automáticamente en cada edición (antes solo se guardaba al dar
+    # clic en "Guardar", así que si el usuario editaba y no lo presionaba,
+    # esos cambios no quedaban ni en la sesión ni en el respaldo JSON).
+    st.session_state.sat_checklist = df_sat_editado
+    if st.button(":blue[:material/save:] Registrar cambio en Bitácora", use_container_width=True, key="guardar_sat"):
         registrar_evento("Cumplimiento SAT", "Actualizó el checklist de obligaciones fiscales")
-        st.success("Checklist guardado.")
+        st.success("Cambios registrados en la Bitácora (el checklist ya se guarda automáticamente al editar).")
     vencidas = df_sat_editado[(df_sat_editado["Estado"] == "Pendiente") & (pd.to_datetime(df_sat_editado["Fecha_Límite"], errors='coerce') < pd.Timestamp(datetime.date.today()))]
     if not vencidas.empty:
         st.error(f":orange[:material/warning:] {len(vencidas)} obligación(es) con fecha límite vencida y aún marcadas como 'Pendiente'.")
@@ -1501,10 +1586,11 @@ def render_pbc():
         },
         key="pbc_editor",
     )
-    if st.button(":blue[:material/save:] Guardar Checklist PBC", use_container_width=True, key="guardar_pbc"):
-        st.session_state.pbc_checklist = df_pbc_editado
+    # Se guarda automáticamente en cada edición (mismo arreglo que en SAT).
+    st.session_state.pbc_checklist = df_pbc_editado
+    if st.button(":blue[:material/save:] Registrar cambio en Bitácora", use_container_width=True, key="guardar_pbc"):
         registrar_evento("Checklist PBC", "Actualizó el checklist de documentos solicitados")
-        st.success("Checklist guardado.")
+        st.success("Cambios registrados en la Bitácora (el checklist ya se guarda automáticamente al editar).")
         st.rerun()
     total_docs = len(df_pbc_editado)
     recibidos = int((df_pbc_editado["Estado"] == "Recibido").sum())
@@ -1522,7 +1608,7 @@ def render_bitacora():
         with pd.ExcelWriter(buffer_bit, engine='openpyxl') as writer:
             df_bitacora.to_excel(writer, sheet_name='Bitacora', index=False)
         st.download_button(label=":blue[:material/download:] Descargar Bitácora (.XLSX)", data=buffer_bit.getvalue(), file_name="Bitacora_Auditoria.xlsx", use_container_width=True)
-        if st.button(":red[:material/delete:] Vaciar Bitácora", key="vaciar_bitacora"):
+        if st.button(":blue[:material/delete:] Vaciar Bitácora", key="vaciar_bitacora"):
             st.session_state.bitacora_eventos = []
             st.rerun()
     else:
@@ -1605,7 +1691,7 @@ def render_gestion_usuarios():
                 st.markdown(info_u["rol"])
             with cu3:
                 if info_u["bloqueado"]:
-                    st.markdown(":red[:material/cancel:] Bloqueado")
+                    st.markdown(":blue[:material/cancel:] Bloqueado")
                 else:
                     st.markdown(":green[:material/check_circle:] Activo")
             with cu4:
@@ -1619,7 +1705,7 @@ def render_gestion_usuarios():
                 if es_unico_admin:
                     st.caption("Único admin")
             with cu5:
-                if st.button(":red[:material/delete:]", key=f"eliminar_usuario_{nombre_u}", help="Eliminar", disabled=(nombre_u == st.session_state.usuario_autenticado or es_unico_admin)):
+                if st.button(":blue[:material/delete:]", key=f"eliminar_usuario_{nombre_u}", help="Eliminar", disabled=(nombre_u == st.session_state.usuario_autenticado or es_unico_admin)):
                     del st.session_state.usuarios_sistema[nombre_u]
                     registrar_evento("Gestión de Usuarios", f"Eliminó al usuario '{nombre_u}'")
                     st.rerun()
