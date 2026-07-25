@@ -184,6 +184,7 @@ variables_sesion = {
     'bancos_clasificacion_pendientes': None,
     'bancos_departamentos_colores': {"Cuentas por Cobrar": "#10B981", "Tesorería": "#F97316", "Trainees": "#FF7F50", "Sin Asignar": "#6B7280"},
     'bancos_departamento_manual': None,
+    'bancos_subseccion': ":material/bar_chart: Dashboard",
     'df_xml_gastos': None, 'df_aux_gastos': None, 'xml_cargados': False, 'xml_ejecutado': False, 'xml_conciliados': None, 'xml_pend_xml': None, 'xml_pend_aux': None,
     'df_saldos_globales': None, 'df_facturas_detalle': None, 'saldos_cargados': False, 'saldos_ejecutado': False, 'saldos_conciliados': None, 'saldos_discrepancias': None,
     'df_divisa_ext': None, 'df_divisa_nac': None, 'divisa_cargados': False, 'divisa_ejecutado': False, 'divisa_conciliados': None, 'divisa_pend_ext': None, 'divisa_pend_nac': None, 'tc_auditoria_val': 17.50,
@@ -893,190 +894,224 @@ def render_bancos():
             except Exception as e:
                 st.error(f":orange[:material/warning:] No se pudo ejecutar la conciliación. Revisa que las columnas de fecha y monto sean correctas. Detalle: {e}")
         if st.session_state.bancos_ejecutado:
-            if 'Tipo_Match' in st.session_state.df_conciliados.columns and not st.session_state.df_conciliados.empty:
-                n_exactos = int((st.session_state.df_conciliados['Tipo_Match'] == 'Exacto (fecha + monto)').sum())
-                n_aprox = int((st.session_state.df_conciliados['Tipo_Match'] == 'Aproximado (dentro de tolerancia)').sum())
-                st.caption(f":blue[:material/search:] Trazabilidad: {n_exactos} partidas por match exacto (misma fecha y monto) · {n_aprox} por match aproximado (dentro de tolerancia). Cada partida se usa una sola vez, nunca se repite en ambos lados.")
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                st.session_state.df_conciliados.to_excel(writer, sheet_name='Partidas_Conciliadas', index=False)
-                st.session_state.bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
-                st.session_state.auxiliar_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
-            st.download_button(label=":blue[:material/download:] Descargar Libro de Conciliación Completo (.XLSX)", data=buffer.getvalue(), file_name="Reporte_Bancos.xlsx", use_container_width=True)
-            tab1, tab2, tab3 = st.tabs([":green[:material/check_circle:] Conciliados", ":orange[:material/warning:] Solo Banco", ":blue[:material/menu_book:] Solo Auxiliar"])
-            with tab1: st.dataframe(st.session_state.df_conciliados, use_container_width=True)
-            with tab2: st.dataframe(st.session_state.bancos_pendientes, use_container_width=True)
-            with tab3: st.dataframe(st.session_state.auxiliar_pendientes, use_container_width=True)
-
-        # ---------- Clasificación de pendientes por Departamento ----------
-        if st.session_state.bancos_ejecutado and ((st.session_state.bancos_pendientes is not None and not st.session_state.bancos_pendientes.empty) or (st.session_state.auxiliar_pendientes is not None and not st.session_state.auxiliar_pendientes.empty)):
-            st.markdown("---")
-            st.markdown(f'<div class="section-header">{icono("users")} Clasificación de Pendientes por Departamento</div>', unsafe_allow_html=True)
-            st.caption("Asigna cada partida pendiente (Banco + Auxiliar) a un departamento responsable de registrarla. Haz clic en cualquier gráfica para ver la lista de pendientes de ese departamento, tal cual aparece en su fuente original (estado de cuenta o auxiliar).")
-
-            colores_dep = st.session_state.bancos_departamentos_colores
-            with st.expander(":violet[:material/palette:] Configurar departamentos y colores"):
-                nuevos_colores = {}
-                cols_color = st.columns(len(colores_dep))
-                for col, (depto, color) in zip(cols_color, colores_dep.items()):
-                    with col:
-                        nuevos_colores[depto] = st.color_picker(depto, value=color, key=f"color_{depto}")
-                nuevo_depto = st.text_input("Agregar nuevo departamento:", key="nuevo_depto_input")
-                if st.button(":green[:material/add:] Agregar departamento", key="agregar_depto_btn") and nuevo_depto.strip():
-                    nuevos_colores[nuevo_depto.strip()] = "#10B981"
-                st.session_state.bancos_departamentos_colores = nuevos_colores
-                colores_dep = nuevos_colores
-
-            if st.session_state.bancos_clasificacion_pendientes is None or st.button(":blue[:material/refresh:] Recalcular tabla de pendientes", key="recalcular_clasificacion"):
+            # Aseguramos que la tabla de clasificación exista sin importar en
+            # qué subsección esté el usuario (el Dashboard la necesita para
+            # tarjetas/gráficas; Tablas la necesita para el editor).
+            if st.session_state.bancos_clasificacion_pendientes is None:
                 st.session_state.bancos_clasificacion_pendientes = construir_clasificacion_pendientes()
 
-            df_clasificado = st.session_state.bancos_clasificacion_pendientes
-            if df_clasificado is not None and not df_clasificado.empty:
-                st.markdown("###### Editor de clasificación (incluye todas las columnas originales)")
-                df_editado = st.data_editor(
-                    df_clasificado,
-                    use_container_width=True,
-                    key="editor_clasificacion_bancos",
-                    column_config={
-                        "Departamento": st.column_config.SelectboxColumn("Departamento", options=list(colores_dep.keys())),
-                        "_Monto_Norm": st.column_config.NumberColumn("Monto", format="$ %.2f"),
-                        "_Fecha_Norm": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
-                    },
-                )
-                st.session_state.bancos_clasificacion_pendientes = df_editado
+            st.markdown("---")
+            opciones_subseccion = [":material/bar_chart: Dashboard", ":material/table_chart: Tablas", ":material/filter_list: Pendientes Filtrados"]
+            if st.session_state.bancos_subseccion not in opciones_subseccion:
+                st.session_state.bancos_subseccion = opciones_subseccion[0]
+            subseccion = st.radio("Vista:", opciones_subseccion, horizontal=True, key="bancos_subseccion", label_visibility="collapsed")
+            st.markdown("---")
 
-                # Vista de solo lectura con color de fondo por departamento
-                def _color_fila(fila):
-                    color = colores_dep.get(fila["Departamento"], "#6B7280")
-                    return [f"background-color:{color}22; color:#E6EDF3"] * len(fila)
-                st.markdown("###### Vista con color por departamento")
-                st.dataframe(df_editado.style.apply(_color_fila, axis=1), use_container_width=True)
+            colores_dep = st.session_state.bancos_departamentos_colores
+            df_clasificado_actual = st.session_state.bancos_clasificacion_pendientes
+            hay_pendientes = df_clasificado_actual is not None and not df_clasificado_actual.empty
 
-                # Marcador de posición: el detalle filtrado se escribe más abajo en
-                # el código (después de leer los clics de tarjetas y gráficas), pero
-                # visualmente aparece EN ESTE PUNTO — arriba de las tarjetas.
-                marcador_drilldown = st.empty()
+            # ============================================================
+            # SUBSECCIÓN 1: DASHBOARD (tarjetas + configuración + gráficas)
+            # ============================================================
+            if subseccion == opciones_subseccion[0]:
+                if 'Tipo_Match' in st.session_state.df_conciliados.columns and not st.session_state.df_conciliados.empty:
+                    n_exactos = int((st.session_state.df_conciliados['Tipo_Match'] == 'Exacto (fecha + monto)').sum())
+                    n_aprox = int((st.session_state.df_conciliados['Tipo_Match'] == 'Aproximado (dentro de tolerancia)').sum())
+                    st.caption(f":blue[:material/search:] Trazabilidad: {n_exactos} partidas por match exacto (misma fecha y monto) · {n_aprox} por match aproximado (dentro de tolerancia). Cada partida se usa una sola vez, nunca se repite en ambos lados.")
 
-                # ---------- Tarjetas por departamento (clicables) ----------
-                resumen_dep = df_editado.groupby("Departamento").agg(Partidas=("_Monto_Norm", "count"), Monto_Total=("_Monto_Norm", "sum")).reset_index()
-                cols_tarjetas = st.columns(len(resumen_dep)) if len(resumen_dep) > 0 else []
-                for col, (_, fila) in zip(cols_tarjetas, resumen_dep.iterrows()):
-                    depto_tarjeta = fila["Departamento"]
-                    color = colores_dep.get(depto_tarjeta, "#6B7280")
-                    seleccionada = st.session_state.bancos_departamento_manual == depto_tarjeta
-                    with col:
-                        sombra = f"box-shadow:0 0 0 2px {color};" if seleccionada else ""
-                        st.markdown(f"""<div class="bl-mini-card" style="border-top-color:{color}; {sombra}">
-                            <div class="bl-mini-title">{depto_tarjeta}</div>
-                            <div class="bl-mini-value">{int(fila['Partidas'])} partidas</div>
-                            <div class="bl-card-sub">$ {fila['Monto_Total']:,.2f}</div>
-                        </div>""", unsafe_allow_html=True)
-                        etiqueta_btn = ":material/filter_list_off: Quitar filtro" if seleccionada else ":material/filter_list: Ver pendientes"
-                        if st.button(etiqueta_btn, key=f"filtro_tarjeta_{depto_tarjeta}", use_container_width=True):
-                            st.session_state.bancos_departamento_manual = None if seleccionada else depto_tarjeta
-                            st.rerun()
+                if not hay_pendientes:
+                    st.success(":green[:material/check_circle:] No hay partidas pendientes por clasificar — todo quedó conciliado.")
+                else:
+                    st.markdown(f'<div class="section-header">{icono("users")} Clasificación de Pendientes por Departamento</div>', unsafe_allow_html=True)
+                    st.caption("Asigna cada partida pendiente (Banco + Auxiliar) a un departamento responsable de registrarla. Haz clic en cualquier tarjeta o gráfica para ir a la sección 'Pendientes Filtrados' con el detalle de ese departamento.")
 
-                st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-                st.caption(":orange[:material/touch_app:] Haz clic en una tarjeta (botón 'Ver pendientes') o en una barra/dona/segmento para ver el detalle de ese departamento.")
+                    with st.expander(":violet[:material/palette:] Configurar departamentos y colores"):
+                        nuevos_colores = {}
+                        cols_color = st.columns(len(colores_dep))
+                        for col, (depto, color) in zip(cols_color, colores_dep.items()):
+                            with col:
+                                nuevos_colores[depto] = st.color_picker(depto, value=color, key=f"color_{depto}")
+                        nuevo_depto = st.text_input("Agregar nuevo departamento:", key="nuevo_depto_input")
+                        if st.button(":green[:material/add:] Agregar departamento", key="agregar_depto_btn") and nuevo_depto.strip():
+                            nuevos_colores[nuevo_depto.strip()] = "#10B981"
+                        st.session_state.bancos_departamentos_colores = nuevos_colores
+                        colores_dep = nuevos_colores
 
-                # ---------- 4 gráficas clicables (custom_data lleva el Departamento) ----------
-                eventos = []
-                g1, g2 = st.columns(2)
-                with g1:
-                    fig_monto = px.bar(
-                        resumen_dep, x="Departamento", y="Monto_Total", color="Departamento",
-                        color_discrete_map=colores_dep, title="Monto Pendiente por Departamento",
-                        custom_data=["Departamento"],
-                    )
-                    fig_monto.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", showlegend=False, height=380)
-                    with st.container(key="chartcard_monto_depto", border=True):
-                        eventos.append(st.plotly_chart(fig_monto, use_container_width=True, on_select="rerun", key="chart_monto_depto"))
-                with g2:
-                    fig_partidas = px.pie(
-                        resumen_dep, names="Departamento", values="Partidas", hole=0.55,
-                        color="Departamento", color_discrete_map=colores_dep, title="Partidas Pendientes por Departamento",
-                        custom_data=["Departamento"],
-                    )
-                    fig_partidas.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
-                    with st.container(key="chartcard_partidas_depto", border=True):
-                        eventos.append(st.plotly_chart(fig_partidas, use_container_width=True, on_select="rerun", key="chart_partidas_depto"))
+                    if st.button(":blue[:material/refresh:] Recalcular tabla de pendientes", key="recalcular_clasificacion"):
+                        st.session_state.bancos_clasificacion_pendientes = construir_clasificacion_pendientes()
+                        st.rerun()
 
-                g3, g4 = st.columns(2)
-                with g3:
-                    resumen_origen_dep = df_editado.groupby(["Departamento", "Origen"]).size().reset_index(name="Cantidad")
-                    fig_origen = px.bar(
-                        resumen_origen_dep, x="Departamento", y="Cantidad", color="Origen", barmode="group",
-                        title="Pendientes Banco vs Auxiliar por Departamento",
-                        custom_data=["Departamento"],
-                    )
-                    fig_origen.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
-                    with st.container(key="chartcard_origen_depto", border=True):
-                        eventos.append(st.plotly_chart(fig_origen, use_container_width=True, on_select="rerun", key="chart_origen_depto"))
-                with g4:
-                    df_antiguedad = df_editado.dropna(subset=["_Fecha_Norm"]).copy()
-                    if not df_antiguedad.empty:
-                        df_antiguedad["Dias"] = df_antiguedad["_Fecha_Norm"].apply(lambda f: (datetime.date.today() - f).days)
-                        bins = [-1, 30, 60, 90, 10_000]
-                        etiquetas = ["0-30 días", "31-60 días", "61-90 días", "90+ días"]
-                        df_antiguedad["Antigüedad"] = pd.cut(df_antiguedad["Dias"], bins=bins, labels=etiquetas)
-                        resumen_antiguedad = df_antiguedad.groupby(["Antigüedad", "Departamento"], observed=True).size().reset_index(name="Cantidad")
-                        fig_antiguedad = px.bar(
-                            resumen_antiguedad, x="Antigüedad", y="Cantidad", color="Departamento",
-                            color_discrete_map=colores_dep, title="Antigüedad de Pendientes por Departamento",
+                    df_editado_dash = df_clasificado_actual
+
+                    # ---------- Tarjetas por departamento (clicables) ----------
+                    resumen_dep = df_editado_dash.groupby("Departamento").agg(Partidas=("_Monto_Norm", "count"), Monto_Total=("_Monto_Norm", "sum")).reset_index()
+                    cols_tarjetas = st.columns(len(resumen_dep)) if len(resumen_dep) > 0 else []
+                    for col, (_, fila) in zip(cols_tarjetas, resumen_dep.iterrows()):
+                        depto_tarjeta = fila["Departamento"]
+                        color = colores_dep.get(depto_tarjeta, "#6B7280")
+                        seleccionada = st.session_state.bancos_departamento_manual == depto_tarjeta
+                        with col:
+                            sombra = f"box-shadow:0 0 0 2px {color};" if seleccionada else ""
+                            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:{color}; {sombra}">
+                                <div class="bl-mini-title">{depto_tarjeta}</div>
+                                <div class="bl-mini-value">{int(fila['Partidas'])} partidas</div>
+                                <div class="bl-card-sub">$ {fila['Monto_Total']:,.2f}</div>
+                            </div>""", unsafe_allow_html=True)
+                            if st.button(":material/filter_list: Ver pendientes", key=f"filtro_tarjeta_{depto_tarjeta}", use_container_width=True):
+                                st.session_state.bancos_departamento_manual = depto_tarjeta
+                                st.session_state.bancos_subseccion = opciones_subseccion[2]
+                                st.rerun()
+
+                    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+                    st.caption(":orange[:material/touch_app:] Haz clic en 'Ver pendientes' o en una barra/dona/segmento para ir directo al detalle de ese departamento.")
+
+                    # ---------- 4 gráficas clicables (custom_data lleva el Departamento) ----------
+                    eventos = []
+                    g1, g2 = st.columns(2)
+                    with g1:
+                        fig_monto = px.bar(
+                            resumen_dep, x="Departamento", y="Monto_Total", color="Departamento",
+                            color_discrete_map=colores_dep, title="Monto Pendiente por Departamento",
                             custom_data=["Departamento"],
                         )
-                        fig_antiguedad.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
-                        with st.container(key="chartcard_antiguedad_depto", border=True):
-                            eventos.append(st.plotly_chart(fig_antiguedad, use_container_width=True, on_select="rerun", key="chart_antiguedad_depto"))
-                    else:
-                        st.info(":blue[:material/info:] No hay fechas válidas para calcular antigüedad.")
+                        fig_monto.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", showlegend=False, height=380)
+                        with st.container(key="chartcard_monto_depto", border=True):
+                            eventos.append(st.plotly_chart(fig_monto, use_container_width=True, on_select="rerun", key="chart_monto_depto"))
+                    with g2:
+                        fig_partidas = px.pie(
+                            resumen_dep, names="Departamento", values="Partidas", hole=0.55,
+                            color="Departamento", color_discrete_map=colores_dep, title="Partidas Pendientes por Departamento",
+                            custom_data=["Departamento"],
+                        )
+                        fig_partidas.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+                        with st.container(key="chartcard_partidas_depto", border=True):
+                            eventos.append(st.plotly_chart(fig_partidas, use_container_width=True, on_select="rerun", key="chart_partidas_depto"))
 
-                # ---------- Drill-down: combinar clic en tarjeta + clic en cualquiera de las 4 gráficas ----------
-                departamento_click = None
-                for evento in eventos:
-                    puntos = evento.selection.get("points", []) if evento and getattr(evento, "selection", None) else []
-                    if puntos:
-                        customdata = puntos[0].get("customdata")
-                        if customdata:
-                            departamento_click = customdata[0]
-                            break
+                    g3, g4 = st.columns(2)
+                    with g3:
+                        resumen_origen_dep = df_editado_dash.groupby(["Departamento", "Origen"]).size().reset_index(name="Cantidad")
+                        fig_origen = px.bar(
+                            resumen_origen_dep, x="Departamento", y="Cantidad", color="Origen", barmode="group",
+                            title="Pendientes Banco vs Auxiliar por Departamento",
+                            custom_data=["Departamento"],
+                        )
+                        fig_origen.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+                        with st.container(key="chartcard_origen_depto", border=True):
+                            eventos.append(st.plotly_chart(fig_origen, use_container_width=True, on_select="rerun", key="chart_origen_depto"))
+                    with g4:
+                        df_antiguedad = df_editado_dash.dropna(subset=["_Fecha_Norm"]).copy()
+                        if not df_antiguedad.empty:
+                            df_antiguedad["_Fecha_dt"] = pd.to_datetime(df_antiguedad["_Fecha_Norm"], errors="coerce")
+                            df_antiguedad["Dias"] = (pd.Timestamp(datetime.date.today()) - df_antiguedad["_Fecha_dt"]).dt.days
+                            bins = [-1, 30, 60, 90, 10_000]
+                            etiquetas = ["0-30 días", "31-60 días", "61-90 días", "90+ días"]
+                            df_antiguedad["Antigüedad"] = pd.cut(df_antiguedad["Dias"], bins=bins, labels=etiquetas)
+                            resumen_antiguedad = df_antiguedad.groupby(["Antigüedad", "Departamento"], observed=True).size().reset_index(name="Cantidad")
+                            fig_antiguedad = px.bar(
+                                resumen_antiguedad, x="Antigüedad", y="Cantidad", color="Departamento",
+                                color_discrete_map=colores_dep, title="Antigüedad de Pendientes por Departamento",
+                                custom_data=["Departamento"],
+                            )
+                            fig_antiguedad.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+                            with st.container(key="chartcard_antiguedad_depto", border=True):
+                                eventos.append(st.plotly_chart(fig_antiguedad, use_container_width=True, on_select="rerun", key="chart_antiguedad_depto"))
+                        else:
+                            st.info(":blue[:material/info:] No hay fechas válidas para calcular antigüedad.")
 
-                # El clic en una gráfica también fija el filtro manual (así ambos
-                # caminos quedan sincronizados y el botón de la tarjeta refleja
-                # el estado correcto en el siguiente rerun).
-                if departamento_click:
-                    st.session_state.bancos_departamento_manual = departamento_click
+                    # ---------- Detectar clic en cualquiera de las 4 gráficas ----------
+                    departamento_click = None
+                    for evento in eventos:
+                        puntos = evento.selection.get("points", []) if evento and getattr(evento, "selection", None) else []
+                        if puntos:
+                            customdata = puntos[0].get("customdata")
+                            if customdata:
+                                departamento_click = customdata[0]
+                                break
+                    if departamento_click:
+                        st.session_state.bancos_departamento_manual = departamento_click
+                        st.session_state.bancos_subseccion = opciones_subseccion[2]
+                        st.rerun()
 
-                departamento_final = departamento_click or st.session_state.bancos_departamento_manual
+            # ============================================================
+            # SUBSECCIÓN 2: TABLAS (conciliados/pendientes + editor completo)
+            # ============================================================
+            elif subseccion == opciones_subseccion[1]:
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    st.session_state.df_conciliados.to_excel(writer, sheet_name='Partidas_Conciliadas', index=False)
+                    st.session_state.bancos_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Banco', index=False)
+                    st.session_state.auxiliar_pendientes.to_excel(writer, sheet_name='Pendientes_Solo_Auxiliar', index=False)
+                st.download_button(label=":blue[:material/download:] Descargar Libro de Conciliación Completo (.XLSX)", data=buffer.getvalue(), file_name="Reporte_Bancos.xlsx", use_container_width=True)
+                tab1, tab2, tab3 = st.tabs([":green[:material/check_circle:] Conciliados", ":orange[:material/warning:] Solo Banco", ":blue[:material/menu_book:] Solo Auxiliar"])
+                with tab1: st.dataframe(st.session_state.df_conciliados, use_container_width=True)
+                with tab2: st.dataframe(st.session_state.bancos_pendientes, use_container_width=True)
+                with tab3: st.dataframe(st.session_state.auxiliar_pendientes, use_container_width=True)
 
-                if departamento_final:
-                    with marcador_drilldown.container():
-                        color_sel = colores_dep.get(departamento_final, "#6B7280")
+                if hay_pendientes:
+                    st.markdown("---")
+                    st.markdown(f'<div class="section-header">{icono("clipboard")} Editor de Clasificación por Departamento</div>', unsafe_allow_html=True)
+                    st.caption("Incluye todas las columnas originales del estado de cuenta / auxiliar. Se guarda automáticamente en cada edición.")
+                    df_editado = st.data_editor(
+                        df_clasificado_actual,
+                        use_container_width=True,
+                        key="editor_clasificacion_bancos",
+                        column_config={
+                            "Departamento": st.column_config.SelectboxColumn("Departamento", options=list(colores_dep.keys())),
+                            "_Monto_Norm": st.column_config.NumberColumn("Monto", format="$ %.2f"),
+                            "_Fecha_Norm": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
+                        },
+                    )
+                    st.session_state.bancos_clasificacion_pendientes = df_editado
+
+                    def _color_fila(fila):
+                        color = colores_dep.get(fila["Departamento"], "#6B7280")
+                        return [f"background-color:{color}22; color:#E6EDF3"] * len(fila)
+                    st.markdown("###### Vista con color por departamento")
+                    st.dataframe(df_editado.style.apply(_color_fila, axis=1), use_container_width=True)
+
+            # ============================================================
+            # SUBSECCIÓN 3: PENDIENTES FILTRADOS (exclusiva del departamento elegido)
+            # ============================================================
+            else:
+                departamento_final = st.session_state.bancos_departamento_manual
+                if not departamento_final:
+                    st.info(":blue[:material/info:] Aún no has seleccionado ningún departamento. Ve a :material/bar_chart: **Dashboard** y haz clic en una tarjeta o en una gráfica para ver aquí sus pendientes.")
+                elif not hay_pendientes:
+                    st.info(":blue[:material/info:] No hay partidas pendientes para clasificar en este momento.")
+                else:
+                    color_sel = colores_dep.get(departamento_final, "#6B7280")
+                    ccab1, ccab2 = st.columns([5, 1])
+                    with ccab1:
                         st.markdown(
                             f'<div class="section-header">{icono("clipboard")} Pendientes por Registrar — '
                             f'<span style="color:{color_sel};">{departamento_final}</span></div>',
                             unsafe_allow_html=True,
                         )
-                        filtro = df_editado[df_editado["Departamento"] == departamento_final]
-                        filas_banco = filtro[filtro["Origen"] == "Banco"]
-                        filas_aux = filtro[filtro["Origen"] == "Auxiliar"]
+                    with ccab2:
+                        if st.button(":material/filter_list_off: Quitar filtro", use_container_width=True, key="quitar_filtro_depto"):
+                            st.session_state.bancos_departamento_manual = None
+                            st.rerun()
 
-                        dcol1, dcol2 = st.columns(2)
-                        with dcol1:
-                            st.markdown("###### :blue[:material/account_balance:] Tal cual aparece en el Estado de Cuenta")
-                            if not filas_banco.empty and st.session_state.df_banco is not None:
-                                columnas_banco = [c for c in st.session_state.df_banco.columns if c in filas_banco.columns]
-                                st.dataframe(filas_banco[columnas_banco], use_container_width=True)
-                            else:
-                                st.caption("Sin pendientes de banco en este departamento.")
-                        with dcol2:
-                            st.markdown("###### :blue[:material/menu_book:] Tal cual aparece en el Auxiliar Contable")
-                            if not filas_aux.empty and st.session_state.df_auxiliar is not None:
-                                columnas_aux = [c for c in st.session_state.df_auxiliar.columns if c in filas_aux.columns]
-                                st.dataframe(filas_aux[columnas_aux], use_container_width=True)
-                            else:
-                                st.caption("Sin pendientes de auxiliar en este departamento.")
-                        st.markdown("---")
+                    filtro = df_clasificado_actual[df_clasificado_actual["Departamento"] == departamento_final]
+                    filas_banco = filtro[filtro["Origen"] == "Banco"]
+                    filas_aux = filtro[filtro["Origen"] == "Auxiliar"]
+
+                    dcol1, dcol2 = st.columns(2)
+                    with dcol1:
+                        st.markdown("###### :blue[:material/account_balance:] Tal cual aparece en el Estado de Cuenta")
+                        if not filas_banco.empty and st.session_state.df_banco is not None:
+                            columnas_banco = [c for c in st.session_state.df_banco.columns if c in filas_banco.columns]
+                            st.dataframe(filas_banco[columnas_banco], use_container_width=True)
+                        else:
+                            st.caption("Sin pendientes de banco en este departamento.")
+                    with dcol2:
+                        st.markdown("###### :blue[:material/menu_book:] Tal cual aparece en el Auxiliar Contable")
+                        if not filas_aux.empty and st.session_state.df_auxiliar is not None:
+                            columnas_aux = [c for c in st.session_state.df_auxiliar.columns if c in filas_aux.columns]
+                            st.dataframe(filas_aux[columnas_aux], use_container_width=True)
+                        else:
+                            st.caption("Sin pendientes de auxiliar en este departamento.")
 
 def render_xml():
     st.write("")
