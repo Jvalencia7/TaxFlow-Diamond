@@ -904,6 +904,14 @@ def render_bancos():
             opciones_subseccion = [":material/bar_chart: Dashboard", ":material/table_chart: Tablas", ":material/filter_list: Pendientes Filtrados"]
             if st.session_state.bancos_subseccion not in opciones_subseccion:
                 st.session_state.bancos_subseccion = opciones_subseccion[0]
+            # Streamlit solo permite fijar el valor de un widget ANTES de que se
+            # cree en este mismo ciclo — por eso el clic en tarjetas/gráficas no
+            # puede reasignar 'bancos_subseccion' directamente (eso truena con
+            # StreamlitAPIException). En vez de eso, esos clics solo prenden esta
+            # bandera y piden un rerun; aquí, justo antes de crear el radio, la
+            # leemos y recién ahí sí es válido cambiar el valor del widget.
+            if st.session_state.pop("_bancos_forzar_pendientes", False):
+                st.session_state.bancos_subseccion = opciones_subseccion[2]
             subseccion = st.radio("Vista:", opciones_subseccion, horizontal=True, key="bancos_subseccion", label_visibility="collapsed")
             st.markdown("---")
 
@@ -960,7 +968,7 @@ def render_bancos():
                             </div>""", unsafe_allow_html=True)
                             if st.button(":material/filter_list: Ver pendientes", key=f"filtro_tarjeta_{depto_tarjeta}", use_container_width=True):
                                 st.session_state.bancos_departamento_manual = depto_tarjeta
-                                st.session_state.bancos_subseccion = opciones_subseccion[2]
+                                st.session_state["_bancos_forzar_pendientes"] = True
                                 st.rerun()
 
                     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
@@ -1030,7 +1038,7 @@ def render_bancos():
                                 break
                     if departamento_click:
                         st.session_state.bancos_departamento_manual = departamento_click
-                        st.session_state.bancos_subseccion = opciones_subseccion[2]
+                        st.session_state["_bancos_forzar_pendientes"] = True
                         st.rerun()
 
             # ============================================================
