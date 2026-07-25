@@ -1862,7 +1862,15 @@ categoria_activa = st.radio(
     "Categoría:", list(CATEGORIAS.keys()), horizontal=True, label_visibility="collapsed", key="selector_categoria",
 )
 pestanas_categoria = CATEGORIAS[categoria_activa]
-objetos_tabs = st.tabs([nombre for nombre, _ in pestanas_categoria])
-for tab_obj, (_, funcion_render) in zip(objetos_tabs, pestanas_categoria):
-    with tab_obj:
-        funcion_render()
+# Cada categoría tiene una cantidad distinta de pestañas. Sin un 'key' fijo,
+# el navegador a veces intenta reconciliar el árbol de pestañas anterior con
+# el nuevo (que tiene otra forma) y truena con
+# "NotFoundError: Failed to execute 'removeChild'". Envolver cada categoría
+# en un contenedor con key único obliga a que se desmonte limpio el anterior
+# y se monte de cero el nuevo, en vez de intentar mezclarlos.
+_clave_categoria = re.sub(r'[^a-zA-Z0-9]+', '_', categoria_activa).strip('_').lower()
+with st.container(key=f"panel_categoria_{_clave_categoria}"):
+    objetos_tabs = st.tabs([nombre for nombre, _ in pestanas_categoria])
+    for tab_obj, (_, funcion_render) in zip(objetos_tabs, pestanas_categoria):
+        with tab_obj:
+            funcion_render()
