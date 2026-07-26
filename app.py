@@ -13,6 +13,7 @@ import hashlib
 import os
 import time
 import base64
+import zoneinfo
 from reconciliation import conciliar_dos_fuentes
 
 # ==============================================================================
@@ -239,6 +240,8 @@ variables_sesion = {
     'sat_checklist': None,
     'sat_descarga_zip': None, 'sat_descarga_total_xml': 0, 'sat_historial': [],
     'sat_resultados_validacion': None, 'sat_validar_uploader_version': 0,
+    'df_facturas_pagadas': None, 'cp_cargados': False, 'cp_ejecutado': False, 'cp_resultados': None,
+    'cp_xml_uploader_version': 0, 'cp_tolerancia_importes': 1.0,
     'rf_datos': {},
 }
 
@@ -336,7 +339,10 @@ if not st.session_state.sesion_autenticada:
     st.stop()
 
 _MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-_ahora_header = datetime.datetime.now()
+try:
+    _ahora_header = datetime.datetime.now(zoneinfo.ZoneInfo("America/Mexico_City"))
+except Exception:
+    _ahora_header = datetime.datetime.now()  # respaldo si el servidor no tiene la base de datos de zonas horarias
 _fecha_larga_header = f"{_ahora_header.day} de {_MESES_ES[_ahora_header.month - 1]} de {_ahora_header.year}"
 _hora_header = _ahora_header.strftime("%H:%M")
 
@@ -345,10 +351,12 @@ with col_titulo:
     st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
 with col_fecha_header:
-    st.markdown(f"""<div style="background:#161B22; border:1px solid #2A313C; border-radius:10px;
-        padding:12px 16px; text-align:right; margin-top:8px;">
-        <div style="font-size:14px; color:#E6EDF3; font-weight:600; white-space:nowrap;">{icono("calendar", 16)} {_fecha_larga_header}</div>
-        <div style="font-size:12px; color:#8B96A5; margin-top:3px;">Actualizado {_hora_header}</div>
+    st.markdown(f"""<div style="display:flex; justify-content:flex-end; margin-top:8px;">
+      <div style="background:#161B22; border:1px solid #2A313C; border-radius:10px;
+        padding:8px 14px; text-align:right; display:inline-block; width:fit-content;">
+        <div style="font-size:13px; color:#E6EDF3; font-weight:600; white-space:nowrap;">{icono("calendar", 14)} {_fecha_larga_header}</div>
+        <div style="font-size:11px; color:#8B96A5; margin-top:2px; white-space:nowrap;">Actualizado {_hora_header}</div>
+      </div>
     </div>""", unsafe_allow_html=True)
 
 # ==============================================================================
@@ -2308,6 +2316,87 @@ def _consultar_estado_cfdi_sat(rfc_emisor, rfc_receptor, total, uuid):
         "CodigoEstatus": _texto("CodigoEstatus"),
     }
 
+_NS_PAGOS_POSIBLES = [
+    ("http://www.sat.gob.mx/Pagos20", "2.0"),
+    ("http://www.sat.gob.mx/Pagos", "1.0"),
+]
+
+def _extraer_pagos_de_complemento(xml_bytes, nombre_archivo):
+    """Extrae, de un XML de Complemento de Pago (REP), cada documento
+    relacionado (factura) que ese pago liquida — un solo complemento puede
+    pagar varias facturas a la vez (pagos parciales), por eso regresa una
+    LISTA de pagos, uno por cada <DoctoRelacionado>. Soporta Pagos 2.0
+    (vigente) y 1.0 (compatibilidad)."""
+    try:
+        raiz = ET.fromstring(xml_bytes)
+    except ET.ParseError as e:
+        return [], f"XML mal formado: {e}"
+
+    ns_cfdi = None
+    for ns in _NS_CFDI_POSIBLES:
+        if raiz.tag == f"{{{ns}}}Comprobante":
+            ns_cfdi = ns
+            break
+    if ns_cfdi is None:
+        return [], "No parece un CFDI (no se encontró el nodo <Comprobante>)."
+
+    complemento_uuid = ""
+    complemento_nodo = raiz.find(f"{{{ns_cfdi}}}Complemento")
+    if complemento_nodo is not None:
+        timbre = complemento_nodo.find(f"{{{_NS_TFD}}}TimbreFiscalDigital")
+        if timbre is not None:
+            complemento_uuid = timbre.get("UUID", "")
+
+    if complemento_nodo is None:
+        return [], "El XML no tiene nodo <Complemento> — no es un Complemento de Pago."
+
+    ns_pago, version_pago = None, None
+    nodo_pagos = None
+    for ns, version in _NS_PAGOS_POSIBLES:
+        nodo_pagos = complemento_nodo.find(f"{{{ns}}}Pagos")
+        if nodo_pagos is not None:
+            ns_pago, version_pago = ns, version
+            break
+    if nodo_pagos is None:
+        return [], "El XML no trae el complemento 'Pagos' (¿será un CFDI de otro tipo?)."
+
+    pagos_extraidos = []
+    for nodo_pago in nodo_pagos.findall(f"{{{ns_pago}}}Pago"):
+        fecha_pago = nodo_pago.get("FechaPago", "")
+        forma_pago = nodo_pago.get("FormaDePagoP", "")
+        for docto in nodo_pago.findall(f"{{{ns_pago}}}DoctoRelacionado"):
+            iva_pagado = 0.0
+            retencion_pagada = 0.0
+            impuestos_dr = docto.find(f"{{{ns_pago}}}ImpuestosDR")
+            if impuestos_dr is not None:
+                traslados_dr = impuestos_dr.find(f"{{{ns_pago}}}TrasladosDR")
+                if traslados_dr is not None:
+                    for traslado in traslados_dr.findall(f"{{{ns_pago}}}TrasladoDR"):
+                        try: iva_pagado += float(traslado.get("ImporteDR", 0) or 0)
+                        except ValueError: pass
+                retenciones_dr = impuestos_dr.find(f"{{{ns_pago}}}RetencionesDR")
+                if retenciones_dr is not None:
+                    for retencion in retenciones_dr.findall(f"{{{ns_pago}}}RetencionDR"):
+                        try: retencion_pagada += float(retencion.get("ImporteDR", 0) or 0)
+                        except ValueError: pass
+            try: imp_pagado = float(docto.get("ImpPagado", 0) or 0)
+            except ValueError: imp_pagado = 0.0
+            pagos_extraidos.append({
+                "Archivo_Complemento": nombre_archivo,
+                "UUID_Complemento": complemento_uuid,
+                "UUID_Factura": docto.get("IdDocumento", ""),
+                "Fecha_Pago": fecha_pago,
+                "Forma_Pago": forma_pago,
+                "Num_Parcialidad": docto.get("NumParcialidad", ""),
+                "Imp_Pagado": imp_pagado,
+                "IVA_Pagado": round(iva_pagado, 2),
+                "Retencion_Pagada": round(retencion_pagada, 2),
+                "Subtotal_Pagado": round(imp_pagado - iva_pagado + retencion_pagada, 2),
+            })
+    if not pagos_extraidos:
+        return [], "El Complemento no trae ningún <DoctoRelacionado> (sin facturas asociadas)."
+    return pagos_extraidos, None
+
 def render_descarga_sat():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("globe")} Descarga Masiva de CFDI — SAT</div>', unsafe_allow_html=True)
@@ -2717,6 +2806,7 @@ def render_centro_exportacion():
         ("Bitácora de Auditoría", bool(st.session_state.bitacora_eventos), {"Bitacora": pd.DataFrame(st.session_state.bitacora_eventos) if st.session_state.bitacora_eventos else None}, "Bitacora_Auditoria.xlsx"),
         ("Descarga Masiva SAT", bool(st.session_state.sat_historial), {"Historial": pd.DataFrame(st.session_state.sat_historial) if st.session_state.sat_historial else None}, "Historial_Descarga_SAT.xlsx"),
         ("Validar CFDI", st.session_state.sat_resultados_validacion is not None and not st.session_state.sat_resultados_validacion.empty, {"Validacion": st.session_state.sat_resultados_validacion}, "Validacion_CFDI_SAT.xlsx"),
+        ("Complementos de Pago", st.session_state.cp_ejecutado and st.session_state.cp_resultados is not None and not st.session_state.cp_resultados.empty, {"Conciliacion_Pagos": st.session_state.cp_resultados}, "Conciliacion_Complementos_Pago.xlsx"),
     ]
 
     st.markdown("---")
@@ -2743,12 +2833,219 @@ def render_centro_exportacion():
             else:
                 st.button(":gray[:material/download:] Descargar", disabled=True, key=f"export_xlsx_disabled_{i}", use_container_width=True)
 
+def render_conciliacion_pagos():
+    st.write("")
+    st.markdown(f'<div class="section-header">{icono("cash")} Conciliación de Complementos de Pago</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Complementos de Pago")
+    st.caption("Sube tu relación de facturas pagadas del mes y los XML de sus Complementos de Pago (REP). La app cruza cada factura contra su complemento automáticamente por UUID y valida Subtotal, IVA, Retenciones y Total — no hace falta que hagas el cruce a mano.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        archivo_facturas = st.file_uploader("Relación de Facturas Pagadas (Excel/CSV):", type=["csv", "xlsx"], key="cp_facturas_u")
+    with col2:
+        archivos_cp_xml = st.file_uploader(
+            "XML de Complementos de Pago (uno o varios):", type=["xml"], accept_multiple_files=True,
+            key=f"cp_xml_uploader_{st.session_state.cp_xml_uploader_version}",
+        )
+
+    if st.button(":gray[:material/delete:] Limpiar Todo", key="cp_limpiar_btn"):
+        st.session_state.cp_resultados = None
+        st.session_state.cp_ejecutado = False
+        st.session_state.cp_xml_uploader_version += 1
+        st.rerun()
+
+    if archivo_facturas is not None:
+        df_facturas = leer_archivo_contable(archivo_facturas)
+        st.markdown("###### :blue[:material/info:] Indica qué columna de tu relación corresponde a cada dato")
+        cc1, cc2, cc3, cc4, cc5 = st.columns(5)
+        with cc1: col_uuid = st.selectbox("UUID Factura:", df_facturas.columns, key="cp_col_uuid")
+        with cc2: col_subtotal = st.selectbox("Subtotal:", df_facturas.columns, key="cp_col_subtotal")
+        with cc3: col_iva = st.selectbox("IVA:", df_facturas.columns, key="cp_col_iva")
+        with cc4: col_retenciones = st.selectbox("Retenciones (opcional):", ["(Ninguna)"] + list(df_facturas.columns), key="cp_col_retenciones")
+        with cc5: col_total = st.selectbox("Total:", df_facturas.columns, key="cp_col_total")
+
+        st.session_state.cp_tolerancia_importes = st.slider("Tolerancia de importes ($):", 0.0, 20.0, value=float(st.session_state.cp_tolerancia_importes), step=0.5, key="cp_tolerancia_slider")
+
+        if archivos_cp_xml and st.button(":green[:material/play_arrow:] Conciliar Complementos de Pago", type="primary", use_container_width=True, key="cp_conciliar_btn"):
+            try:
+                todos_los_pagos = []
+                errores_xml = []
+                for archivo in archivos_cp_xml:
+                    pagos, error = _extraer_pagos_de_complemento(archivo.getvalue(), archivo.name)
+                    if error:
+                        errores_xml.append((archivo.name, error))
+                    todos_los_pagos.extend(pagos)
+                df_pagos = pd.DataFrame(todos_los_pagos)
+
+                columnas_resumen = ["UUID_Factura", "Num_Complementos", "Total_Pagado", "IVA_Pagado", "Retencion_Pagada", "Subtotal_Pagado", "Fecha_Ultimo_Pago"]
+                if not df_pagos.empty:
+                    resumen_pagos = df_pagos.groupby("UUID_Factura").agg(
+                        Num_Complementos=("UUID_Complemento", "nunique"),
+                        Total_Pagado=("Imp_Pagado", "sum"),
+                        IVA_Pagado=("IVA_Pagado", "sum"),
+                        Retencion_Pagada=("Retencion_Pagada", "sum"),
+                        Subtotal_Pagado=("Subtotal_Pagado", "sum"),
+                        Fecha_Ultimo_Pago=("Fecha_Pago", "max"),
+                    ).reset_index()
+                else:
+                    resumen_pagos = pd.DataFrame(columns=columnas_resumen)
+
+                df_facturas_norm = df_facturas.copy()
+                df_facturas_norm["_UUID"] = df_facturas_norm[col_uuid].astype(str).str.strip().str.upper()
+                df_facturas_norm["_Subtotal_Esperado"] = pd.to_numeric(df_facturas_norm[col_subtotal], errors="coerce").fillna(0.0)
+                df_facturas_norm["_IVA_Esperado"] = pd.to_numeric(df_facturas_norm[col_iva], errors="coerce").fillna(0.0)
+                df_facturas_norm["_Retencion_Esperada"] = pd.to_numeric(df_facturas_norm[col_retenciones], errors="coerce").fillna(0.0) if col_retenciones != "(Ninguna)" else 0.0
+                df_facturas_norm["_Total_Esperado"] = pd.to_numeric(df_facturas_norm[col_total], errors="coerce").fillna(0.0)
+
+                resumen_pagos["_UUID"] = resumen_pagos["UUID_Factura"].astype(str).str.strip().str.upper()
+                cruce = df_facturas_norm.merge(resumen_pagos, on="_UUID", how="left", suffixes=("", "_pago"))
+
+                tolerancia = float(st.session_state.cp_tolerancia_importes)
+
+                def _clasificar(fila):
+                    if pd.isna(fila.get("Num_Complementos")):
+                        return "Sin Complemento"
+                    dif_total = abs(fila["_Total_Esperado"] - (fila["Total_Pagado"] or 0))
+                    dif_iva = abs(fila["_IVA_Esperado"] - (fila["IVA_Pagado"] or 0))
+                    dif_ret = abs(fila["_Retencion_Esperada"] - (fila["Retencion_Pagada"] or 0))
+                    dif_sub = abs(fila["_Subtotal_Esperado"] - (fila["Subtotal_Pagado"] or 0))
+                    if max(dif_total, dif_iva, dif_ret, dif_sub) <= tolerancia:
+                        return "Conciliado"
+                    return "Diferencia en Importes"
+
+                cruce["Estado"] = cruce.apply(_clasificar, axis=1)
+                cruce["Num_Complementos"] = cruce["Num_Complementos"].fillna(0).astype(int)
+                for c in ["Total_Pagado", "IVA_Pagado", "Retencion_Pagada", "Subtotal_Pagado"]:
+                    cruce[c] = cruce[c].fillna(0.0)
+                cruce["Diferencia_Total"] = (cruce["_Total_Esperado"] - cruce["Total_Pagado"]).round(2)
+                cruce["Diferencia_IVA"] = (cruce["_IVA_Esperado"] - cruce["IVA_Pagado"]).round(2)
+                cruce["Diferencia_Retencion"] = (cruce["_Retencion_Esperada"] - cruce["Retencion_Pagada"]).round(2)
+                cruce["Diferencia_Subtotal"] = (cruce["_Subtotal_Esperado"] - cruce["Subtotal_Pagado"]).round(2)
+                cruce["Fecha_Ultimo_Pago"] = cruce["Fecha_Ultimo_Pago"].fillna("").astype(str)
+
+                resultado_final = cruce[[
+                    col_uuid, "Estado", "Num_Complementos",
+                    "_Subtotal_Esperado", "Subtotal_Pagado", "Diferencia_Subtotal",
+                    "_IVA_Esperado", "IVA_Pagado", "Diferencia_IVA",
+                    "_Retencion_Esperada", "Retencion_Pagada", "Diferencia_Retencion",
+                    "_Total_Esperado", "Total_Pagado", "Diferencia_Total", "Fecha_Ultimo_Pago",
+                ]].rename(columns={
+                    col_uuid: "UUID Factura", "Num_Complementos": "N° Complementos",
+                    "_Subtotal_Esperado": "Subtotal Esperado", "Subtotal_Pagado": "Subtotal Pagado", "Diferencia_Subtotal": "Dif. Subtotal",
+                    "_IVA_Esperado": "IVA Esperado", "IVA_Pagado": "IVA Pagado", "Diferencia_IVA": "Dif. IVA",
+                    "_Retencion_Esperada": "Retención Esperada", "Retencion_Pagada": "Retención Pagada", "Diferencia_Retencion": "Dif. Retención",
+                    "_Total_Esperado": "Total Esperado", "Total_Pagado": "Total Pagado", "Diferencia_Total": "Dif. Total",
+                    "Fecha_Ultimo_Pago": "Fecha Último Pago",
+                })
+
+                st.session_state.cp_resultados = resultado_final
+                st.session_state.cp_ejecutado = True
+                if errores_xml:
+                    st.session_state["_cp_errores_xml"] = errores_xml
+                registrar_evento("Complementos de Pago", f"Concilió {len(resultado_final)} facturas pagadas contra {len(archivos_cp_xml)} complemento(s) subido(s) ({int((resultado_final['Estado']=='Conciliado').sum())} conciliadas, {int((resultado_final['Estado']=='Sin Complemento').sum())} sin complemento)")
+                st.rerun()
+            except Exception as e:
+                st.error(f":orange[:material/warning:] No se pudo conciliar. Revisa las columnas seleccionadas y que los XML sean Complementos de Pago válidos. Detalle: {e}")
+
+    if st.session_state.get("_cp_errores_xml"):
+        with st.expander(f":orange[:material/warning:] {len(st.session_state['_cp_errores_xml'])} archivo(s) XML no se pudieron leer"):
+            for nombre, err in st.session_state["_cp_errores_xml"]:
+                st.caption(f"• **{nombre}**: {err}")
+
+    if st.session_state.cp_ejecutado and st.session_state.cp_resultados is not None and not st.session_state.cp_resultados.empty:
+        df_r = st.session_state.cp_resultados
+        n_conciliado = int((df_r["Estado"] == "Conciliado").sum())
+        n_sin_complemento = int((df_r["Estado"] == "Sin Complemento").sum())
+        n_diferencia = int((df_r["Estado"] == "Diferencia en Importes").sum())
+        n_total = len(df_r)
+
+        st.markdown("---")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#12B76A;">
+                <div class="bl-mini-title">Conciliadas</div><div class="bl-mini-value">{n_conciliado}</div>
+            </div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#EF4444;">
+                <div class="bl-mini-title">Sin Complemento</div><div class="bl-mini-value">{n_sin_complemento}</div>
+            </div>""", unsafe_allow_html=True)
+        with c3:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#F79009;">
+                <div class="bl-mini-title">Con Diferencias</div><div class="bl-mini-value">{n_diferencia}</div>
+            </div>""", unsafe_allow_html=True)
+        with c4:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#38BDF8;">
+                <div class="bl-mini-title">Total Facturas</div><div class="bl-mini-value">{n_total}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+        def _color_fila_cp(fila):
+            color = {"Conciliado": "#12B76A22", "Sin Complemento": "#EF444422", "Diferencia en Importes": "#F7900922"}.get(fila["Estado"], "")
+            return [f"background-color:{color}; color:#E6EDF3"] * len(fila)
+        st.dataframe(df_r.style.apply(_color_fila_cp, axis=1), use_container_width=True)
+
+        buffer_cp = io.BytesIO()
+        with pd.ExcelWriter(buffer_cp, engine='openpyxl') as writer:
+            df_r.to_excel(writer, sheet_name='Conciliacion_Pagos', index=False)
+        st.download_button(":blue[:material/download:] Descargar Conciliación de Pagos (.XLSX)", data=buffer_cp.getvalue(), file_name="Conciliacion_Complementos_Pago.xlsx", use_container_width=True, key="cp_descargar_btn")
+
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+        colores_estado_cp = {"Conciliado": "#12B76A", "Sin Complemento": "#EF4444", "Diferencia en Importes": "#F79009"}
+
+        g1, g2 = st.columns(2)
+        with g1:
+            resumen_estado_cp = df_r["Estado"].value_counts().reset_index()
+            resumen_estado_cp.columns = ["Estado", "Cantidad"]
+            fig_estado_cp = px.pie(
+                resumen_estado_cp, names="Estado", values="Cantidad", hole=0.55,
+                title="Distribución por Estado", color="Estado", color_discrete_map=colores_estado_cp,
+            )
+            fig_estado_cp.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+            with st.container(key="chartcard_cp_estado", border=True):
+                st.plotly_chart(fig_estado_cp, use_container_width=True)
+        with g2:
+            df_montos_cp = pd.DataFrame({
+                "Concepto": ["Esperado", "Pagado"],
+                "Monto": [df_r["Total Esperado"].sum(), df_r["Total Pagado"].sum()],
+            })
+            fig_montos_cp = px.bar(
+                df_montos_cp, x="Concepto", y="Monto", title="Total Esperado vs Total Pagado",
+                color="Concepto", color_discrete_sequence=PALETA_CORPORATIVA,
+            )
+            fig_montos_cp.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, showlegend=False)
+            with st.container(key="chartcard_cp_montos", border=True):
+                st.plotly_chart(fig_montos_cp, use_container_width=True)
+
+        g3, g4 = st.columns(2)
+        with g3:
+            top_dif_total = df_r.reindex(df_r["Dif. Total"].abs().sort_values(ascending=False).index).head(10)
+            fig_dif_total = px.bar(
+                top_dif_total, x="Dif. Total", y="UUID Factura", orientation="h", title="Top 10 Diferencias en Total",
+                color_discrete_sequence=["#EF4444"],
+            )
+            fig_dif_total.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, yaxis={'categoryorder': 'total ascending', 'showticklabels': False})
+            with st.container(key="chartcard_cp_dif_total", border=True):
+                st.plotly_chart(fig_dif_total, use_container_width=True)
+        with g4:
+            top_dif_iva = df_r.reindex(df_r["Dif. IVA"].abs().sort_values(ascending=False).index).head(10)
+            fig_dif_iva = px.bar(
+                top_dif_iva, x="Dif. IVA", y="UUID Factura", orientation="h", title="Top 10 Diferencias en IVA",
+                color_discrete_sequence=["#F79009"],
+            )
+            fig_dif_iva.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, yaxis={'categoryorder': 'total ascending', 'showticklabels': False})
+            with st.container(key="chartcard_cp_dif_iva", border=True):
+                st.plotly_chart(fig_dif_iva, use_container_width=True)
+    elif archivo_facturas is None:
+        _estado_vacio("cash", "Aún no has subido tu relación de facturas pagadas", "Sube el Excel/CSV con tus facturas pagadas del mes y los XML de sus Complementos de Pago para que la app haga el cruce automáticamente.")
+
 def render_ayuda():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("dashboard")} 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("globe")} Descarga Masiva SAT</div>Descarga tus CFDI (Emitidos y/o Recibidos) directo del SAT usando tu e.firma, sin necesidad de entrar al portal manualmente. Requiere la librería <code>cfdiclient</code> instalada en el servidor. Tu contraseña y llave privada nunca se guardan en disco.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("check")} Validar CFDI</div>Sube uno o varios XML y consulta al SAT si siguen vigentes o fueron cancelados — usa el mismo servicio público del código QR, sin necesidad de e.firma.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("cash")} Complementos de Pago</div>Sube tu relación de facturas pagadas del mes y los XML de sus Complementos de Pago (REP) — la app cruza cada factura por UUID contra su complemento y valida Subtotal, IVA, Retenciones y Total, marcando cuáles ya están conciliadas, cuáles no tienen complemento, y cuáles tienen diferencias de importe.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("bank")} 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("document")} 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("invoice")} 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
@@ -2779,6 +3076,7 @@ CATEGORIAS = {
     ":blue[:material/refresh:] Conciliaciones": [
         (":blue[:material/cloud_download:] Descarga Masiva SAT", render_descarga_sat),
         (":green[:material/check_circle:] Validar CFDI", render_validar_cfdi),
+        (":green[:material/cash:] Complementos de Pago", render_conciliacion_pagos),
         (":blue[:material/account_balance:] Bancos vs Auxiliar", render_bancos),
         (":gray[:material/description:] XML vs Contabilidad", render_xml),
         (":orange[:material/receipt_long:] Clientes y Proveedores", render_saldos),
