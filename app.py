@@ -276,6 +276,7 @@ if 'usuarios_sistema' not in st.session_state:
         }
     }
 if 'sesion_autenticada' not in st.session_state: st.session_state.sesion_autenticada = False
+if 'ultima_actualizacion_modulos' not in st.session_state: st.session_state.ultima_actualizacion_modulos = {}
 if 'usuario_autenticado' not in st.session_state: st.session_state.usuario_autenticado = None
 
 if not st.session_state.sesion_autenticada:
@@ -334,8 +335,21 @@ if not st.session_state.sesion_autenticada:
                 st.error(f"Usuario o contraseña incorrectos. Intento {registro_usuario['intentos_fallidos']}/5 antes del bloqueo automático.")
     st.stop()
 
-st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
+_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+_ahora_header = datetime.datetime.now()
+_fecha_larga_header = f"{_ahora_header.day} de {_MESES_ES[_ahora_header.month - 1]} de {_ahora_header.year}"
+_hora_header = _ahora_header.strftime("%H:%M")
+
+col_titulo, col_fecha_header = st.columns([3, 1])
+with col_titulo:
+    st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
+with col_fecha_header:
+    st.markdown(f"""<div style="background:#161B22; border:1px solid #2A313C; border-radius:10px;
+        padding:12px 16px; text-align:right; margin-top:8px;">
+        <div style="font-size:14px; color:#E6EDF3; font-weight:600; white-space:nowrap;">{icono("calendar", 16)} {_fecha_larga_header}</div>
+        <div style="font-size:12px; color:#8B96A5; margin-top:3px;">Actualizado {_hora_header}</div>
+    </div>""", unsafe_allow_html=True)
 
 # ==============================================================================
 # 3. NAVEGACIÓN: se construye al final del archivo, agrupada por categorías
@@ -548,6 +562,30 @@ def registrar_evento(modulo, accion):
         "Módulo": modulo,
         "Acción": accion,
     })
+    st.session_state.ultima_actualizacion_modulos[modulo] = datetime.datetime.now()
+
+def _mostrar_ultima_actualizacion(nombre_modulo):
+    """Muestra 'Última actualización: hace X' arriba de un módulo, si ya se
+    registró alguna acción para él (vía registrar_evento)."""
+    momento = st.session_state.ultima_actualizacion_modulos.get(nombre_modulo)
+    if momento is None:
+        return
+    segundos = (datetime.datetime.now() - momento).total_seconds()
+    if segundos < 60: texto = "hace unos segundos"
+    elif segundos < 3600: texto = f"hace {int(segundos // 60)} min"
+    elif segundos < 86400: texto = f"hace {int(segundos // 3600)} h"
+    else: texto = momento.strftime("el %d/%m/%Y a las %H:%M")
+    st.caption(f":gray[:material/calendar_month: Última actualización: {texto}]")
+
+def _estado_vacio(icono_nombre, titulo, mensaje, color="#38BDF8"):
+    """Tarjeta de 'estado vacío' con ícono + título + mensaje de acción clara,
+    para usarse en vez de un simple st.info() cuando un módulo todavía no
+    tiene datos cargados."""
+    st.markdown(f"""<div class="bl-card" style="text-align:center; padding:36px 24px; border-top:3px solid {color};">
+        <div style="margin-bottom:10px;">{icono(icono_nombre, 36, color)}</div>
+        <div style="font-family:Manrope,sans-serif; font-weight:800; font-size:18px; color:#E6EDF3; margin-bottom:6px;">{titulo}</div>
+        <div style="font-size:13.5px; color:#8B96A5; max-width:480px; margin:0 auto;">{mensaje}</div>
+    </div>""", unsafe_allow_html=True)
 
 def _serializar_estado(diccionario):
     """Convierte un dict de variables de sesión (incluyendo DataFrames y bytes)
@@ -594,21 +632,43 @@ def _deserializar_estado(paquete):
             resultado[llave] = info["datos"]
     return resultado
 
+def _agregar_membrete_pdf(fig, titulo_documento, empresa, periodo, auditor):
+    """Membrete consistente (logo si existe, marca, título, datos del
+    cliente/periodo/auditor, folio y fecha de emisión) para CUALQUIER PDF
+    que genere la app — así todos los documentos comparten la misma
+    identidad visual en vez de que cada uno arme su encabezado por su lado.
+    Devuelve la posición Y (0-1, coords. de figura) donde ya es seguro que
+    el resto del contenido empiece a escribirse."""
+    if st.session_state.logo_bytes:
+        try:
+            from PIL import Image
+            logo_img = Image.open(io.BytesIO(st.session_state.logo_bytes))
+            eje_logo = fig.add_axes([0.08, 0.90, 0.09, 0.07])
+            eje_logo.imshow(logo_img)
+            eje_logo.axis('off')
+        except Exception:
+            pass
+    plt.text(0.20, 0.945, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=15, weight='bold', color='#0EA5E9')
+    plt.text(0.20, 0.920, titulo_documento, fontsize=11.5, weight='bold')
+    plt.text(0.10, 0.895, "-" * 118, color='gray')
+    folio = f"TFD-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    plt.text(0.10, 0.865, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=10)
+    plt.text(0.10, 0.842, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=10)
+    plt.text(0.10, 0.819, f"Auditor / Responsable: {auditor if auditor else 'No Especificado'}", fontsize=10)
+    plt.text(0.10, 0.796, f"Folio: {folio}   ·   Emitido: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", fontsize=9, color='gray')
+    plt.text(0.10, 0.775, "-" * 118, color='gray')
+    return 0.74
+
 def generar_dictamen_pdf(empresa, periodo, auditor, conciliado, banco_p, aux_p):
     fig, ax = plt.subplots(figsize=(8.5, 11))
     ax.axis('off')
-    plt.text(0.1, 0.92, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=16, weight='bold', color='#00A4CC')
-    plt.text(0.1, 0.89, "DICTAMEN FORMAL DE AUDITORÍA Y CONCILIACIÓN DE LIBROS", fontsize=12, weight='bold')
-    plt.text(0.1, 0.85, "------------------------------------------------------------------------------------------------------------------------", color='gray')
-    plt.text(0.1, 0.78, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=11)
-    plt.text(0.1, 0.75, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=11)
-    plt.text(0.1, 0.72, f"Auditor Responsable: {auditor if auditor else 'No Especificado'}", fontsize=11)
-    plt.text(0.1, 0.60, f"(*) Capital Conciliado y Alineado: {moneda(conciliado)}", fontsize=11)
-    plt.text(0.1, 0.57, f"(*) Inconsistencias en Estado de Cuenta (Banco): {moneda(banco_p)}", fontsize=11)
-    plt.text(0.1, 0.54, f"(*) Inconsistencias en Libro Mayor (Auxiliar): {moneda(aux_p)}", fontsize=11)
+    y = _agregar_membrete_pdf(fig, "DICTAMEN FORMAL DE AUDITORÍA Y CONCILIACIÓN DE LIBROS (BANCOS)", empresa, periodo, auditor)
+    plt.text(0.1, y - 0.03, f"(*) Capital Conciliado y Alineado: {moneda(conciliado)}", fontsize=11)
+    plt.text(0.1, y - 0.06, f"(*) Inconsistencias en Estado de Cuenta (Banco): {moneda(banco_p)}", fontsize=11)
+    plt.text(0.1, y - 0.09, f"(*) Inconsistencias en Libro Mayor (Auxiliar): {moneda(aux_p)}", fontsize=11)
     total_desfase = banco_p + aux_p
     riesgo_status = "CRÍTICO" if total_desfase > (conciliado * 0.05) else "ACEPTABLE"
-    plt.text(0.1, 0.45, f"DICTAMEN FINAL DEL AUDITOR: REVISIÓN CON STATUS {riesgo_status}", fontsize=12, weight='bold', color='red' if riesgo_status == "CRÍTICO" else 'green')
+    plt.text(0.1, y - 0.18, f"DICTAMEN FINAL DEL AUDITOR: REVISIÓN CON STATUS {riesgo_status}", fontsize=12, weight='bold', color='red' if riesgo_status == "CRÍTICO" else 'green')
     pdf_buffer = io.BytesIO()
     plt.savefig(pdf_buffer, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
@@ -758,17 +818,11 @@ def generar_resumen_ejecutivo_pdf(empresa, periodo, auditor):
 
     fig, ax = plt.subplots(figsize=(8.5, 11))
     ax.axis('off')
-    plt.text(0.1, 0.95, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=16, weight='bold', color='#0EA5E9')
-    plt.text(0.1, 0.925, "RESUMEN EJECUTIVO CONSOLIDADO — TODOS LOS MÓDULOS", fontsize=12, weight='bold')
-    plt.text(0.1, 0.90, "-" * 118, color='gray')
-    plt.text(0.1, 0.86, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=10)
-    plt.text(0.1, 0.835, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=10)
-    plt.text(0.1, 0.81, f"Auditor Responsable: {auditor if auditor else 'No Especificado'}", fontsize=10)
-    plt.text(0.1, 0.785, f"Fecha de Emisión: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", fontsize=10)
+    y = _agregar_membrete_pdf(fig, "RESUMEN EJECUTIVO CONSOLIDADO — TODOS LOS MÓDULOS", empresa, periodo, auditor)
 
-    plt.text(0.1, 0.74, f"Progreso general: {_pct(tk['completado'], tk['total']):.0f}%  ({tk['completado']} de {tk['total']} módulos completados)", fontsize=11, weight='bold')
+    plt.text(0.1, y, f"Progreso general: {_pct(tk['completado'], tk['total']):.0f}%  ({tk['completado']} de {tk['total']} módulos completados)", fontsize=11, weight='bold')
 
-    y = 0.69
+    y -= 0.05
     plt.text(0.1, y, "Módulo", fontsize=10, weight='bold')
     plt.text(0.55, y, "Estado", fontsize=10, weight='bold')
     plt.text(0.72, y, "Conciliado", fontsize=10, weight='bold')
@@ -973,7 +1027,8 @@ def render_dashboard():
         
         pdf_dictamen = generar_dictamen_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor, st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p)
         st.download_button(label=":blue[:material/download:] Descargar Dictamen Certificado (PDF)", data=pdf_dictamen, file_name="Dictamen_Auditoria.pdf", mime="application/pdf", use_container_width=True)
-    else: st.info(":blue[:material/diamond:] Suite Inicializada. Usa los módulos superiores para comenzar la auditoría.")
+    else:
+        _estado_vacio("dashboard", "Aún no hay datos que mostrar", "Empieza por el módulo <b>Bancos vs Auxiliar</b> (categoría Conciliaciones) — en cuanto ejecutes tu primera conciliación, este panel se llena solo.")
 
     st.markdown("---")
     st.markdown(f'<div class="section-header">{icono("clipboard")} Resumen Ejecutivo Consolidado</div>', unsafe_allow_html=True)
@@ -1057,6 +1112,7 @@ def render_configuracion():
 def render_bancos():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("bank")} Módulo Bancario: Estado de Cuenta vs Auxiliar Contable Interno</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Bancos vs Auxiliar")
     if not st.session_state.bancos_cargados:
         c_b1, c_b2 = st.columns(2)
         with c_b1: b_file = st.file_uploader("Sube Estado de Cuenta Bancario", type=["csv", "xlsx"], key="b_u")
@@ -1389,6 +1445,7 @@ def render_bancos():
 def render_xml():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("document")} Auditoría Fiscal: Comprobantes XML vs Auxiliar de Contabilidad</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("XML vs Contabilidad")
     if not st.session_state.xml_cargados:
         cx_1, cx_2 = st.columns(2)
         with cx_1: x_file = st.file_uploader("Sube Reporte de Facturas", type=["csv", "xlsx"], key="x_u")
@@ -1444,6 +1501,7 @@ def render_xml():
 def render_saldos():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("invoice")} Herramienta de Auditoría de Cartera: Clientes y Proveedores</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Clientes y Proveedores")
     if not st.session_state.saldos_cargados:
         cs_1, cs_2 = st.columns(2)
         with cs_1: sg_file = st.file_uploader("Sube Reporte de Saldos Globales (ERP)", type=["csv", "xlsx"], key="sg_u_new")
@@ -1482,6 +1540,7 @@ def render_saldos():
 def render_multidivisa():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("globe")} Herramienta Cambiaria: Conciliación de Cuentas en Dólares (USD)</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Multidivisa USD")
     st.session_state.tc_auditoria_val = st.number_input("Tipo de Cambio (TC) de Cierre Mensual:", min_value=1.0000, value=float(st.session_state.tc_auditoria_val), step=0.0100, key="tc_num_input")
     if not st.session_state.divisa_cargados:
         cv_1, cv_2 = st.columns(2)
@@ -1552,6 +1611,7 @@ def render_multidivisa():
 def render_nomina():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("badge")} Auditoría de Nómina: CFDI Timbrados vs Auxiliar</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Nómina CFDI")
     if not st.session_state.nomina_cargados:
         cn_1, cn_2 = st.columns(2)
         with cn_1: n_xml = st.file_uploader("Sube XML Nómina", type=["csv", "xlsx"], key="nx")
@@ -1607,6 +1667,7 @@ def render_nomina():
 def render_inventarios():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("box")} Inventarios Físicos vs Almacén ERP</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Inventarios")
     if not st.session_state.inventarios_cargados:
         ci_1, ci_2 = st.columns(2)
         with ci_1: inf = st.file_uploader("Conteo Físico Real", type=["csv", "xlsx"], key="inf")
@@ -1661,6 +1722,7 @@ def render_inventarios():
 def render_iva():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("cash")} IVA Efectivamente Cobrado / Pagado (Flujo de Efectivo)</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("IVA Flujo")
     if not st.session_state.iva_cargados:
         civ_1, civ_2 = st.columns(2)
         with civ_1: iv_b = st.file_uploader("Flujo Bancos con IVA", type=["csv", "xlsx"], key="iv_b")
@@ -1716,6 +1778,7 @@ def render_iva():
 def render_activo_fijo():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("factory")} Activo Fijo: Depreciación Esperada vs Registrada</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Activo Fijo")
     st.caption("A diferencia de los demás módulos, aquí se sube UN solo archivo (el kárdex de activos fijos ya trae el valor original y la depreciación acumulada contable en la misma fila).")
     if not st.session_state.af_cargados:
         af_file = st.file_uploader("Sube el Kárdex de Activos Fijos", type=["csv", "xlsx"], key="af_u")
@@ -1832,6 +1895,7 @@ def render_razones():
 def render_sat():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("scale")} Checklist de Cumplimiento SAT</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Cumplimiento SAT")
     st.caption("Esto es un rastreador de estatus de obligaciones (qué se presentó, cuándo, con qué acuse), NO un calculador de impuestos — los montos e ISR/IVA a pagar se calculan en tu sistema contable o con tu asesor fiscal; aquí solo llevas el control de cumplimiento.")
     if st.session_state.sat_checklist is None:
         st.session_state.sat_checklist = pd.DataFrame([
@@ -1903,6 +1967,7 @@ def render_aprobacion():
 def render_pbc():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("clipboard")} Checklist de Documentos Solicitados al Cliente (PBC)</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Checklist PBC")
     st.caption("Lleva control de qué se pidió, a quién, para cuándo, y si ya llegó. Agrega o quita renglones directamente en la tabla.")
     if st.session_state.pbc_checklist is None:
         st.session_state.pbc_checklist = pd.DataFrame([
@@ -1947,7 +2012,7 @@ def render_bitacora():
             st.session_state.bitacora_eventos = []
             st.rerun()
     else:
-        st.info(":orange[:material/lightbulb:] Aún no hay eventos registrados. Cada vez que ejecutes una conciliación o cambies un estado de aprobación, aparecerá aquí.")
+        _estado_vacio("book", "Bitácora vacía por ahora", "Cada vez que ejecutes una conciliación, cambies un estado de aprobación o gestiones un usuario, aparecerá aquí automáticamente.", color="#FBBF24")
 
 def render_gestion_usuarios():
     st.write("")
@@ -2246,6 +2311,7 @@ def _consultar_estado_cfdi_sat(rfc_emisor, rfc_receptor, total, uuid):
 def render_descarga_sat():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("globe")} Descarga Masiva de CFDI — SAT</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Descarga SAT")
     st.warning(":orange[:material/warning:] Tu archivo **.key** y tu **contraseña de e.firma** equivalen a tu firma autógrafa. Se usan solo en memoria durante esta descarga — nunca se guardan en disco, ni se registran en la Bitácora ni en el respaldo JSON. Usa esta sección solo en un equipo de confianza.")
 
     try:
@@ -2473,6 +2539,7 @@ def render_descarga_sat():
 def render_validar_cfdi():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("check")} Validar Vigencia o Cancelación de CFDI</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Validar CFDI")
     st.caption(":blue[:material/info:] Usa el servicio público del SAT (el mismo que valida el código QR de una factura) — NO necesita e.firma. Solo lee del propio XML el UUID, los RFC y el Total, y le pregunta al SAT si ese comprobante sigue Vigente o fue Cancelado.")
 
     archivos_validar = st.file_uploader(
@@ -2616,12 +2683,72 @@ def render_validar_cfdi():
             with st.container(key="chartcard_val_receptores", border=True):
                 st.plotly_chart(fig_receptores, use_container_width=True)
 
+def render_centro_exportacion():
+    st.write("")
+    st.markdown(f'<div class="section-header">{icono("clipboard")} Centro de Exportación</div>', unsafe_allow_html=True)
+    st.caption("Todos los reportes descargables de la app, en un solo lugar — sin tener que entrar a cada módulo por separado.")
+
+    def _excel_generico(hojas):
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            for nombre_hoja, df in hojas.items():
+                if df is not None and not df.empty:
+                    df.to_excel(writer, sheet_name=nombre_hoja[:31], index=False)
+        return buf.getvalue()
+
+    reportes_pdf = [
+        ("Bancos vs Auxiliar", "Dictamen Formal (PDF)", st.session_state.bancos_ejecutado,
+         (lambda: generar_dictamen_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor, st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p)),
+         "Dictamen_Auditoria.pdf", "application/pdf"),
+        ("Todos los módulos", "Resumen Ejecutivo (PDF)", True,
+         (lambda: generar_resumen_ejecutivo_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor)),
+         "Resumen_Ejecutivo_TaxFlow.pdf", "application/pdf"),
+    ]
+
+    reportes_excel = [
+        ("Bancos vs Auxiliar", st.session_state.bancos_ejecutado, {"Conciliados": st.session_state.df_conciliados, "Pend_Banco": st.session_state.bancos_pendientes, "Pend_Auxiliar": st.session_state.auxiliar_pendientes}, "Reporte_Bancos.xlsx"),
+        ("XML vs Contabilidad", st.session_state.xml_ejecutado, {"Conciliados": st.session_state.xml_conciliados, "Pend_XML": st.session_state.xml_pend_xml, "Pend_Auxiliar": st.session_state.xml_pend_aux}, "Reporte_XML.xlsx"),
+        ("Clientes y Proveedores", st.session_state.saldos_ejecutado, {"Correctos": st.session_state.saldos_conciliados, "Discrepancias": st.session_state.saldos_discrepancias}, "Reporte_Saldos.xlsx"),
+        ("Multidivisa USD", st.session_state.divisa_ejecutado, {"Conciliados": st.session_state.divisa_conciliados, "Pend_USD": st.session_state.divisa_pend_ext, "Pend_MXN": st.session_state.divisa_pend_nac}, "Reporte_Multidivisa.xlsx"),
+        ("Nómina CFDI", st.session_state.nomina_ejecutado, {"Conciliados": st.session_state.nomina_conciliados, "Pend_CFDI": st.session_state.nomina_pend_cfdi, "Pend_Auxiliar": st.session_state.nomina_pend_aux}, "Reporte_Nomina.xlsx"),
+        ("Inventarios", st.session_state.inventarios_ejecutado, {"Correctos": st.session_state.inventarios_conciliados, "Discrepancias": st.session_state.inventarios_discrepancias}, "Reporte_Inventarios.xlsx"),
+        ("IVA Flujo", st.session_state.iva_ejecutado, {"Conciliados": st.session_state.iva_conciliados, "Pend_Banco": st.session_state.iva_pend_banco, "Pend_Auxiliar": st.session_state.iva_pend_aux}, "Reporte_IVA.xlsx"),
+        ("Activo Fijo", st.session_state.af_ejecutado, {"Correctos": st.session_state.af_conciliados, "Discrepancias": st.session_state.af_discrepancias}, "Reporte_Activo_Fijo.xlsx"),
+        ("Bitácora de Auditoría", bool(st.session_state.bitacora_eventos), {"Bitacora": pd.DataFrame(st.session_state.bitacora_eventos) if st.session_state.bitacora_eventos else None}, "Bitacora_Auditoria.xlsx"),
+        ("Descarga Masiva SAT", bool(st.session_state.sat_historial), {"Historial": pd.DataFrame(st.session_state.sat_historial) if st.session_state.sat_historial else None}, "Historial_Descarga_SAT.xlsx"),
+        ("Validar CFDI", st.session_state.sat_resultados_validacion is not None and not st.session_state.sat_resultados_validacion.empty, {"Validacion": st.session_state.sat_resultados_validacion}, "Validacion_CFDI_SAT.xlsx"),
+    ]
+
+    st.markdown("---")
+    st.markdown("###### :red[:material/description:] Reportes en PDF")
+    for i, (nombre_mod, etiqueta, disponible, generador, nombre_archivo, mime) in enumerate(reportes_pdf):
+        c1, c2, c3 = st.columns([3, 1.3, 1.7])
+        with c1: st.markdown(f"**{nombre_mod}** — {etiqueta}")
+        with c2: st.markdown(":green[:material/check_circle: Disponible]" if disponible else ":gray[:material/pending: No generado]")
+        with c3:
+            if disponible:
+                st.download_button(":blue[:material/download:] Descargar", data=generador(), file_name=nombre_archivo, mime=mime, key=f"export_pdf_{i}", use_container_width=True)
+            else:
+                st.button(":gray[:material/download:] Descargar", disabled=True, key=f"export_pdf_disabled_{i}", use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("###### :green[:material/description:] Reportes en Excel")
+    for i, (nombre_mod, disponible, hojas, nombre_archivo) in enumerate(reportes_excel):
+        c1, c2, c3 = st.columns([3, 1.3, 1.7])
+        with c1: st.markdown(f"**{nombre_mod}**")
+        with c2: st.markdown(":green[:material/check_circle: Disponible]" if disponible else ":gray[:material/pending: No generado]")
+        with c3:
+            if disponible:
+                st.download_button(":blue[:material/download:] Descargar", data=_excel_generico(hojas), file_name=nombre_archivo, key=f"export_xlsx_{i}", use_container_width=True)
+            else:
+                st.button(":gray[:material/download:] Descargar", disabled=True, key=f"export_xlsx_disabled_{i}", use_container_width=True)
+
 def render_ayuda():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("dashboard")} 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("globe")} Descarga Masiva SAT</div>Descarga tus CFDI (Emitidos y/o Recibidos) directo del SAT usando tu e.firma, sin necesidad de entrar al portal manualmente. Requiere la librería <code>cfdiclient</code> instalada en el servidor. Tu contraseña y llave privada nunca se guardan en disco.</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="help-card"><div class="help-title">{icono("check")} Validar CFDI (Vigente/Cancelado)</div>Sube uno o varios XML y consulta al SAT si siguen vigentes o fueron cancelados — usa el mismo servicio público del código QR, sin necesidad de e.firma.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("check")} Validar CFDI</div>Sube uno o varios XML y consulta al SAT si siguen vigentes o fueron cancelados — usa el mismo servicio público del código QR, sin necesidad de e.firma.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("bank")} 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("document")} 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("invoice")} 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
@@ -2630,6 +2757,7 @@ def render_ayuda():
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("box")} 7. Inventarios</div>Levantamiento físico real de auditoría contra los saldos del Kárdex contable.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("cash")} 8. IVA Flujo</div>Validar que el IVA determinado coincida con el flujo real reflejado en bancos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("gear")} 9. Configuración y Copias JSON</div>Gestión de membretes, tolerancias, fecha límite de cierre y carga/descarga de respaldos de sesión.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("clipboard")} Centro de Exportación</div>Todos los reportes descargables de la app (PDF y Excel de cada módulo) en un solo lugar, sin tener que entrar módulo por módulo a buscarlos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("factory")} 10. Activo Fijo</div>Calcula la depreciación esperada en línea recta a partir del kárdex de activos y la compara contra la depreciación acumulada registrada en libros.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("trending")} 11. Razones Financieras</div>Captura cifras del Balance General y Estado de Resultados para obtener liquidez, apalancamiento, márgenes, ROA y ROE con su gráfica.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("scale")} 12. Cumplimiento SAT</div>Checklist de obligaciones fiscales (ISR, IVA, DIOT, Nómina, 32-D, Contabilidad Electrónica) con fechas límite y estatus — no calcula impuestos, solo da seguimiento a lo que ya se presentó.</div>', unsafe_allow_html=True)
@@ -2650,7 +2778,7 @@ CATEGORIAS = {
     ":blue[:material/bar_chart:] Panel General": [(":blue[:material/bar_chart:] Dashboard", render_dashboard)],
     ":blue[:material/refresh:] Conciliaciones": [
         (":blue[:material/cloud_download:] Descarga Masiva SAT", render_descarga_sat),
-        (":green[:material/check_circle:] Validar CFDI (Vigente/Cancelado)", render_validar_cfdi),
+        (":green[:material/check_circle:] Validar CFDI", render_validar_cfdi),
         (":blue[:material/account_balance:] Bancos vs Auxiliar", render_bancos),
         (":gray[:material/description:] XML vs Contabilidad", render_xml),
         (":orange[:material/receipt_long:] Clientes y Proveedores", render_saldos),
@@ -2672,9 +2800,19 @@ CATEGORIAS = {
     ":gray[:material/settings:] Sistema": [
         (":gray[:material/settings:] Configuración", render_configuracion),
         (":violet[:material/group:] Gestión de Usuarios", render_gestion_usuarios),
+        (":gray[:material/download:] Centro de Exportación", render_centro_exportacion),
         (":blue[:material/help:] Ayuda", render_ayuda),
     ],
 }
+
+# Ocultar del menú los módulos a los que el usuario autenticado no tiene
+# acceso, en vez de mostrarlos y bloquear el contenido adentro (ej. Gestión
+# de Usuarios es solo para Administrador).
+if st.session_state.rol_actual != "Administrador":
+    CATEGORIAS[":gray[:material/settings:] Sistema"] = [
+        (nombre, funcion) for nombre, funcion in CATEGORIAS[":gray[:material/settings:] Sistema"]
+        if funcion is not render_gestion_usuarios
+    ]
 
 st.markdown("---")
 
