@@ -195,9 +195,6 @@ def punto(color, size=9):
     return f'<span style="display:inline-block;width:{size}px;height:{size}px;border-radius:50%;background:{color};margin-right:7px;"></span>'
 
 
-st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
-
 # ==============================================================================
 # 2. SISTEMA DE MEMORIA INTEGRAL DEL WORKFLOW (SESSION STATE)
 # ==============================================================================
@@ -240,6 +237,7 @@ variables_sesion = {
     'df_af_kardex': None, 'af_cargados': False, 'af_ejecutado': False, 'af_conciliados': None, 'af_discrepancias': None,
     'sat_checklist': None,
     'sat_descarga_zip': None, 'sat_descarga_total_xml': 0, 'sat_historial': [],
+    'sat_resultados_validacion': None,
     'rf_datos': {},
 }
 
@@ -303,7 +301,7 @@ if not st.session_state.sesion_autenticada:
                 enviado = st.form_submit_button("Entrar", type="primary", use_container_width=True)
             st.markdown(
                 "<p style='text-align:center; font-size:11px; color:#5B6472; margin-top:14px;'>"
-                "TaxFlow-Diamond · Enterprise Financial &amp; XML Reconciliation Suite</p>",
+                "TaxFlow-Diamond · v2.4 · Desarrollado por Jose Valencia</p>",
                 unsafe_allow_html=True,
             )
     if enviado:
@@ -334,6 +332,9 @@ if not st.session_state.sesion_autenticada:
             else:
                 st.error(f"Usuario o contraseña incorrectos. Intento {registro_usuario['intentos_fallidos']}/5 antes del bloqueo automático.")
     st.stop()
+
+st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 # 3. NAVEGACIÓN: se construye al final del archivo, agrupada por categorías
@@ -2147,6 +2148,81 @@ def _procesar_solicitud_sat(fiel, rfc, fecha_ini, fecha_fin, direccion, tipo_sol
 
     return paquetes_zip
 
+_NS_CFDI_POSIBLES = [
+    "http://www.sat.gob.mx/cfd/4",
+    "http://www.sat.gob.mx/cfd/3",
+]
+_NS_TFD = "http://www.sat.gob.mx/TimbreFiscalDigital"
+
+def _extraer_datos_cfdi(xml_bytes, nombre_archivo):
+    """Extrae UUID, RFC Emisor, RFC Receptor y Total de un XML de CFDI
+    (soporta versión 3.3 y 4.0). Devuelve un dict con los datos, o con
+    'error' si el archivo no es un CFDI válido o le falta el timbre."""
+    try:
+        raiz = ET.fromstring(xml_bytes)
+    except ET.ParseError as e:
+        return {"Archivo": nombre_archivo, "error": f"XML mal formado: {e}"}
+
+    comprobante = None
+    ns_usado = None
+    for ns in _NS_CFDI_POSIBLES:
+        if raiz.tag == f"{{{ns}}}Comprobante":
+            comprobante = raiz
+            ns_usado = ns
+            break
+    if comprobante is None:
+        return {"Archivo": nombre_archivo, "error": "No parece un CFDI (no se encontró el nodo <Comprobante>)."}
+
+    emisor = comprobante.find(f"{{{ns_usado}}}Emisor")
+    receptor = comprobante.find(f"{{{ns_usado}}}Receptor")
+    complemento = comprobante.find(f"{{{ns_usado}}}Complemento")
+    timbre = complemento.find(f"{{{_NS_TFD}}}TimbreFiscalDigital") if complemento is not None else None
+
+    if timbre is None:
+        return {"Archivo": nombre_archivo, "error": "El CFDI no tiene Timbre Fiscal Digital (UUID) — no se puede validar."}
+
+    return {
+        "Archivo": nombre_archivo,
+        "UUID": timbre.get("UUID", ""),
+        "RFC_Emisor": emisor.get("Rfc", "") if emisor is not None else "",
+        "RFC_Receptor": receptor.get("Rfc", "") if receptor is not None else "",
+        "Total": comprobante.get("Total", "0"),
+        "error": None,
+    }
+
+def _consultar_estado_cfdi_sat(rfc_emisor, rfc_receptor, total, uuid):
+    """Consulta el servicio público 'Consulta de Estado de CFDI' del SAT (el
+    mismo que valida el código QR de una factura). No requiere e.firma."""
+    import requests
+    url = "https://consultaqr.facturaelectronica.sat.gob.mx/ConsultaCFDIService.svc"
+    expresion = f"?re={rfc_emisor}&rr={rfc_receptor}&tt={total}&id={uuid}"
+    sobre = (
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">'
+        '<soapenv:Header/><soapenv:Body><tem:Consulta>'
+        f'<tem:expresionImpresa><![CDATA[{expresion}]]></tem:expresionImpresa>'
+        '</tem:Consulta></soapenv:Body></soapenv:Envelope>'
+    )
+    headers = {
+        "Content-Type": "text/xml; charset=utf-8",
+        "SOAPAction": "http://tempuri.org/IConsultaCFDIService/Consulta",
+    }
+    respuesta = requests.post(url, data=sobre.encode("utf-8"), headers=headers, timeout=30)
+    respuesta.raise_for_status()
+    raiz = ET.fromstring(respuesta.content)
+
+    def _texto(nombre_local):
+        for elem in raiz.iter():
+            if elem.tag.split("}")[-1] == nombre_local:
+                return (elem.text or "").strip()
+        return ""
+
+    return {
+        "Estado": _texto("Estado") or "No disponible",
+        "EsCancelable": _texto("EsCancelable"),
+        "EstatusCancelacion": _texto("EstatusCancelacion") or "N/A",
+        "CodigoEstatus": _texto("CodigoEstatus"),
+    }
+
 def render_descarga_sat():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("globe")} Descarga Masiva de CFDI — SAT</div>', unsafe_allow_html=True)
@@ -2303,6 +2379,88 @@ def render_descarga_sat():
         st.markdown(f'<div class="section-header">{icono("book")} Historial de Descargas (esta sesión)</div>', unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(st.session_state.sat_historial), use_container_width=True)
 
+    # ==============================================================================
+    # VALIDACIÓN DE VIGENCIA / CANCELACIÓN ANTE EL SAT
+    # ==============================================================================
+    st.markdown("---")
+    st.markdown(f'<div class="section-header">{icono("check")} Validar Vigencia o Cancelación de CFDI</div>', unsafe_allow_html=True)
+    st.caption(":blue[:material/info:] Usa el servicio público del SAT (el mismo que valida el código QR de una factura) — NO necesita e.firma. Solo lee del propio XML el UUID, los RFC y el Total, y le pregunta al SAT si ese comprobante sigue Vigente o fue Cancelado.")
+
+    archivos_validar = st.file_uploader(
+        "Sube uno o varios XML para validar:", type=["xml"], accept_multiple_files=True, key="sat_validar_uploader",
+    )
+
+    if archivos_validar and st.button(":green[:material/play_arrow:] Validar ante el SAT", type="primary", use_container_width=True, key="sat_validar_lote_btn"):
+        resultados = []
+        marcador_progreso = st.empty()
+        barra = st.progress(0)
+        for i, archivo in enumerate(archivos_validar):
+            marcador_progreso.caption(f"Validando {archivo.name} ({i + 1}/{len(archivos_validar)})…")
+            datos = _extraer_datos_cfdi(archivo.getvalue(), archivo.name)
+            if datos.get("error"):
+                resultados.append({
+                    "Archivo": datos["Archivo"], "UUID": "—", "RFC Emisor": "—", "RFC Receptor": "—",
+                    "Total": "—", "Estado SAT": "No se pudo leer", "Detalle": datos["error"],
+                })
+            else:
+                try:
+                    estado_sat = _consultar_estado_cfdi_sat(datos["RFC_Emisor"], datos["RFC_Receptor"], datos["Total"], datos["UUID"])
+                    resultados.append({
+                        "Archivo": datos["Archivo"], "UUID": datos["UUID"], "RFC Emisor": datos["RFC_Emisor"],
+                        "RFC Receptor": datos["RFC_Receptor"], "Total": datos["Total"],
+                        "Estado SAT": estado_sat["Estado"], "Detalle": estado_sat["EstatusCancelacion"],
+                    })
+                except Exception as e:
+                    resultados.append({
+                        "Archivo": datos["Archivo"], "UUID": datos["UUID"], "RFC Emisor": datos["RFC_Emisor"],
+                        "RFC Receptor": datos["RFC_Receptor"], "Total": datos["Total"],
+                        "Estado SAT": "Error de conexión", "Detalle": str(e),
+                    })
+            barra.progress((i + 1) / len(archivos_validar))
+            time.sleep(0.4)  # no saturar el servicio del SAT
+
+        marcador_progreso.empty()
+        st.session_state.sat_resultados_validacion = pd.DataFrame(resultados)
+        n_vigentes = (st.session_state.sat_resultados_validacion["Estado SAT"] == "Vigente").sum()
+        n_cancelados = (st.session_state.sat_resultados_validacion["Estado SAT"] == "Cancelado").sum()
+        registrar_evento("Descarga SAT", f"Validó vigencia de {len(archivos_validar)} XML ({n_vigentes} vigentes, {n_cancelados} cancelados)")
+        st.rerun()
+
+    if st.session_state.sat_resultados_validacion is not None and not st.session_state.sat_resultados_validacion.empty:
+        df_resultados = st.session_state.sat_resultados_validacion
+        n_vigentes = int((df_resultados["Estado SAT"] == "Vigente").sum())
+        n_cancelados = int((df_resultados["Estado SAT"] == "Cancelado").sum())
+        n_otros = len(df_resultados) - n_vigentes - n_cancelados
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#12B76A;">
+                <div class="bl-mini-title">Vigentes</div>
+                <div class="bl-mini-value">{n_vigentes}</div>
+            </div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#EF4444;">
+                <div class="bl-mini-title">Cancelados</div>
+                <div class="bl-mini-value">{n_cancelados}</div>
+            </div>""", unsafe_allow_html=True)
+        with c3:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#F79009;">
+                <div class="bl-mini-title">Otros / Sin leer</div>
+                <div class="bl-mini-value">{n_otros}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+        def _color_estado(fila):
+            color = {"Vigente": "#12B76A22", "Cancelado": "#EF444422"}.get(fila["Estado SAT"], "#F7900922")
+            return [f"background-color:{color}; color:#E6EDF3"] * len(fila)
+        st.dataframe(df_resultados.style.apply(_color_estado, axis=1), use_container_width=True)
+
+        buffer_val = io.BytesIO()
+        with pd.ExcelWriter(buffer_val, engine='openpyxl') as writer:
+            df_resultados.to_excel(writer, sheet_name='Validacion_CFDI', index=False)
+        st.download_button(":blue[:material/download:] Descargar Resultados de Validación (.XLSX)", data=buffer_val.getvalue(), file_name="Validacion_CFDI_SAT.xlsx", use_container_width=True, key="sat_descargar_validacion_btn")
+
 def render_ayuda():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
@@ -2418,4 +2576,4 @@ with st.container(key=f"panel_modulo_{_clave_modulo}"):
 # PIE DE PÁGINA
 # ==============================================================================
 st.markdown("---")
-st.caption(f":gray[TaxFlow-Diamond v2.4 · Enterprise Financial & XML Reconciliation Suite · Sesión: {st.session_state.usuario_autenticado or 'N/D'} ({st.session_state.rol_actual})]")
+st.caption(f":gray[TaxFlow-Diamond · v2.4 · Desarrollado por Jose Valencia · Sesión: {st.session_state.usuario_autenticado or 'N/D'} ({st.session_state.rol_actual})]")
