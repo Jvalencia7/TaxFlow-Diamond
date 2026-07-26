@@ -63,14 +63,16 @@ st.markdown("""
     [data-testid="stBaseButton-primaryFormSubmit"], [data-testid="baseButton-primaryFormSubmit"] {
         background-color: #38BDF8 !important;
         border-color: #38BDF8 !important;
-        color: #0D1117 !important;
     }
     button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover,
     [data-testid="stBaseButton-primary"]:hover, [data-testid="baseButton-primary"]:hover {
         background-color: #0EA5E9 !important;
         border-color: #0EA5E9 !important;
-        color: #0D1117 !important;
     }
+    /* Color de respaldo para el texto plano de botones primarios (SIN !important,
+       así el color propio de cada ícono de módulo sigue ganando y no se aplana) */
+    button[kind="primary"] p, button[kind="primaryFormSubmit"] p { color: #0D1117; }
+
     /* Rectángulos bien redondeados en todos los botones (estilo "pastilla" de navegación) */
     .stButton > button, [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"] {
         border-radius: 10px !important;
@@ -81,11 +83,10 @@ st.markdown("""
     [data-baseweb="radio"] [aria-checked="true"] div { background-color: #38BDF8 !important; }
     [data-baseweb="radio"] [aria-checked="true"] ~ div { color: #38BDF8 !important; }
 
-    /* Indicador (línea) y texto de la pestaña activa dentro de st.tabs */
-    [data-testid="stTabs"] [aria-selected="true"] { color: #38BDF8 !important; }
+    /* Indicador (línea) de la pestaña activa dentro de st.tabs — el texto/ícono
+       conserva su propio color, solo se resalta la línea inferior */
     [data-testid="stTabs"] [data-baseweb="tab-highlight"] { background-color: #38BDF8 !important; }
     [data-testid="stTabs"] [data-baseweb="tab-border"] { background-color: #38BDF8 !important; }
-    button[data-baseweb="tab"][aria-selected="true"] { color: #38BDF8 !important; }
 
     /* ---- Estilo Dashboard tipo BlackLine (versión oscura) ---- */
     .bl-wrapper { background-color: #0D1117; padding: 24px; border-radius: 14px; }
@@ -237,7 +238,7 @@ variables_sesion = {
     'df_af_kardex': None, 'af_cargados': False, 'af_ejecutado': False, 'af_conciliados': None, 'af_discrepancias': None,
     'sat_checklist': None,
     'sat_descarga_zip': None, 'sat_descarga_total_xml': 0, 'sat_historial': [],
-    'sat_resultados_validacion': None,
+    'sat_resultados_validacion': None, 'sat_validar_uploader_version': 0,
     'rf_datos': {},
 }
 
@@ -348,8 +349,50 @@ if st.session_state.logo_bytes is not None: st.sidebar.image(st.session_state.lo
 else: st.sidebar.info(":blue[:material/apartment:] Sin Logotipo Institucional. Configúralo en la pestaña superior de Configuración.")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### :blue[:material/person:] Sesión Activa")
-st.sidebar.success(f"**{st.session_state.usuario_autenticado}** ({st.session_state.rol_actual})")
+st.sidebar.caption(f":gray[:material/person:] Usuario Activo")
+st.sidebar.markdown(
+    f"""<div style="background:#161B22; border:1px solid #2A313C; border-radius:8px; padding:10px 14px;
+    font-weight:700; color:#E6EDF3; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+    <span>{st.session_state.usuario_autenticado}</span><span style="color:#8B96A5; font-size:12px;">▾</span>
+    </div>
+    <div style="font-size:12px; color:#8B96A5; margin-top:-10px; margin-bottom:10px;">{st.session_state.rol_actual}</div>""",
+    unsafe_allow_html=True,
+)
+
+# ---------- Cálculo de alertas (se usa en la línea de estado de abajo) ----------
+_notificaciones = []
+if st.session_state.fecha_limite_cierre:
+    try:
+        _fecha_lim = datetime.date.fromisoformat(st.session_state.fecha_limite_cierre)
+        _dias_rest = (_fecha_lim - datetime.date.today()).days
+        if _dias_rest < 0: _notificaciones.append(("error", f":orange[:material/warning:] El cierre venció hace {abs(_dias_rest)} día(s)."))
+        elif _dias_rest <= 3: _notificaciones.append(("warning", f":orange[:material/warning:] Quedan {_dias_rest} día(s) para el cierre."))
+    except ValueError:
+        pass
+_modulos_sin_cargar = sum(1 for llave in ["bancos_cargados", "xml_cargados", "saldos_cargados", "divisa_cargados", "nomina_cargados", "inventarios_cargados", "iva_cargados"] if not st.session_state[llave])
+if _modulos_sin_cargar > 0:
+    _notificaciones.append(("info", f":blue[:material/folder_open:] {_modulos_sin_cargar} módulo(s) de conciliación aún sin insumos cargados."))
+if st.session_state.pbc_checklist is not None and not st.session_state.pbc_checklist.empty:
+    _pendientes_pbc = int((st.session_state.pbc_checklist["Estado"] == "Pendiente").sum())
+    if _pendientes_pbc > 0: _notificaciones.append(("warning", f":blue[:material/checklist:] {_pendientes_pbc} documento(s) del checklist PBC pendientes de recibir."))
+
+st.sidebar.markdown(
+    """<div style="font-size:13px; color:#C4CDD8; display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+    <span style="color:#38BDF8;">🛡️</span> Conexión segura</div>
+    <div style="font-size:13px; color:#C4CDD8; display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+    <span style="color:#12B76A;">●</span> Conectado</div>""",
+    unsafe_allow_html=True,
+)
+_texto_alertas = "Sin alertas" if not _notificaciones else f"{len(_notificaciones)} alerta(s)"
+_color_alertas = "gray" if not _notificaciones else "orange"
+with st.sidebar.expander(f":{_color_alertas}[:material/notifications: {_texto_alertas}]", expanded=False):
+    if not _notificaciones:
+        st.caption(":green[:material/check_circle:] Sin pendientes por ahora.")
+    else:
+        for _tipo, _texto in _notificaciones:
+            getattr(st, _tipo)(_texto)
+
+st.sidebar.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
 if st.sidebar.button(":gray[:material/lock:] Cerrar Sesión", type="primary", use_container_width=True, key="sidebar_logout_btn"):
     st.session_state.bitacora_eventos.append({
         "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -396,29 +439,6 @@ with st.sidebar.expander(":blue[:material/apartment:] Multiempresa (auditorías 
                 st.rerun()
     else:
         st.caption("Aún no hay auditorías guardadas.")
-
-st.sidebar.markdown("---")
-with st.sidebar.expander(":orange[:material/notifications:] Notificaciones", expanded=True):
-    _notificaciones = []
-    if st.session_state.fecha_limite_cierre:
-        try:
-            _fecha_lim = datetime.date.fromisoformat(st.session_state.fecha_limite_cierre)
-            _dias_rest = (_fecha_lim - datetime.date.today()).days
-            if _dias_rest < 0: _notificaciones.append(("error", f"⏰ El cierre venció hace {abs(_dias_rest)} día(s)."))
-            elif _dias_rest <= 3: _notificaciones.append(("warning", f"⏰ Quedan {_dias_rest} día(s) para el cierre."))
-        except ValueError:
-            pass
-    _modulos_sin_cargar = sum(1 for llave in ["bancos_cargados", "xml_cargados", "saldos_cargados", "divisa_cargados", "nomina_cargados", "inventarios_cargados", "iva_cargados"] if not st.session_state[llave])
-    if _modulos_sin_cargar > 0:
-        _notificaciones.append(("info", f":blue[:material/folder_open:] {_modulos_sin_cargar} módulo(s) de conciliación aún sin insumos cargados."))
-    if st.session_state.pbc_checklist is not None and not st.session_state.pbc_checklist.empty:
-        _pendientes_pbc = int((st.session_state.pbc_checklist["Estado"] == "Pendiente").sum())
-        if _pendientes_pbc > 0: _notificaciones.append(("warning", f":blue[:material/checklist:] {_pendientes_pbc} documento(s) del checklist PBC pendientes de recibir."))
-    if not _notificaciones:
-        st.caption(":green[:material/check_circle:] Sin pendientes por ahora.")
-    else:
-        for _tipo, _texto in _notificaciones:
-            getattr(st, _tipo)(_texto)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### :blue[:material/download:] Descarga de Plantillas Corporativas")
@@ -2377,20 +2397,99 @@ def render_descarga_sat():
     if st.session_state.sat_historial:
         st.markdown("---")
         st.markdown(f'<div class="section-header">{icono("book")} Historial de Descargas (esta sesión)</div>', unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame(st.session_state.sat_historial), use_container_width=True)
 
-    # ==============================================================================
-    # VALIDACIÓN DE VIGENCIA / CANCELACIÓN ANTE EL SAT
-    # ==============================================================================
-    st.markdown("---")
+        df_hist = pd.DataFrame(st.session_state.sat_historial)
+
+        total_corridas = len(df_hist)
+        total_cfdis = int(df_hist["CFDIs"].sum())
+        rfcs_distintos = df_hist["RFC"].nunique()
+        ultima_descarga = df_hist["Fecha"].iloc[0]
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#38BDF8;">
+                <div class="bl-mini-title">Corridas Realizadas</div>
+                <div class="bl-mini-value">{total_corridas}</div>
+            </div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#34D399;">
+                <div class="bl-mini-title">CFDIs Descargados</div>
+                <div class="bl-mini-value">{total_cfdis:,}</div>
+            </div>""", unsafe_allow_html=True)
+        with c3:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#A78BFA;">
+                <div class="bl-mini-title">RFCs Consultados</div>
+                <div class="bl-mini-value">{rfcs_distintos}</div>
+            </div>""", unsafe_allow_html=True)
+        with c4:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#FB923C;">
+                <div class="bl-mini-title">Última Descarga</div>
+                <div class="bl-mini-value" style="font-size:16px;">{ultima_descarga}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+        st.dataframe(df_hist, use_container_width=True)
+
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+        g1, g2 = st.columns(2)
+        with g1:
+            fig_cfdis_corrida = px.bar(
+                df_hist.iloc[::-1], x="Fecha", y="CFDIs", title="CFDIs Descargados por Corrida",
+                color_discrete_sequence=PALETA_CORPORATIVA,
+            )
+            fig_cfdis_corrida.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, showlegend=False)
+            with st.container(key="chartcard_sat_cfdis_corrida", border=True):
+                st.plotly_chart(fig_cfdis_corrida, use_container_width=True)
+        with g2:
+            resumen_rfc_corridas = df_hist.groupby("RFC").size().reset_index(name="Corridas")
+            fig_corridas_rfc = px.pie(
+                resumen_rfc_corridas, names="RFC", values="Corridas", hole=0.55,
+                title="Corridas por RFC", color_discrete_sequence=PALETA_CORPORATIVA,
+            )
+            fig_corridas_rfc.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+            with st.container(key="chartcard_sat_corridas_rfc", border=True):
+                st.plotly_chart(fig_corridas_rfc, use_container_width=True)
+
+        g3, g4 = st.columns(2)
+        with g3:
+            resumen_cfdis_rfc = df_hist.groupby("RFC")["CFDIs"].sum().reset_index().sort_values("CFDIs", ascending=True)
+            fig_cfdis_rfc = px.bar(
+                resumen_cfdis_rfc, x="CFDIs", y="RFC", orientation="h", title="CFDIs Acumulados por RFC",
+                color_discrete_sequence=PALETA_CORPORATIVA,
+            )
+            fig_cfdis_rfc.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, showlegend=False)
+            with st.container(key="chartcard_sat_cfdis_rfc", border=True):
+                st.plotly_chart(fig_cfdis_rfc, use_container_width=True)
+        with g4:
+            resumen_direccion = df_hist.groupby("Dirección").size().reset_index(name="Corridas")
+            fig_direccion = px.bar(
+                resumen_direccion, x="Dirección", y="Corridas", title="Corridas por Dirección",
+                color="Dirección", color_discrete_sequence=PALETA_CORPORATIVA,
+            )
+            fig_direccion.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, showlegend=False)
+            with st.container(key="chartcard_sat_direccion", border=True):
+                st.plotly_chart(fig_direccion, use_container_width=True)
+
+def render_validar_cfdi():
+    st.write("")
     st.markdown(f'<div class="section-header">{icono("check")} Validar Vigencia o Cancelación de CFDI</div>', unsafe_allow_html=True)
     st.caption(":blue[:material/info:] Usa el servicio público del SAT (el mismo que valida el código QR de una factura) — NO necesita e.firma. Solo lee del propio XML el UUID, los RFC y el Total, y le pregunta al SAT si ese comprobante sigue Vigente o fue Cancelado.")
 
     archivos_validar = st.file_uploader(
-        "Sube uno o varios XML para validar:", type=["xml"], accept_multiple_files=True, key="sat_validar_uploader",
+        "Sube uno o varios XML para validar:", type=["xml"], accept_multiple_files=True,
+        key=f"sat_validar_uploader_{st.session_state.sat_validar_uploader_version}",
     )
 
-    if archivos_validar and st.button(":green[:material/play_arrow:] Validar ante el SAT", type="primary", use_container_width=True, key="sat_validar_lote_btn"):
+    col_val_btn, col_limpiar_btn = st.columns([3, 1])
+    with col_val_btn:
+        iniciar_validacion = archivos_validar and st.button(":green[:material/play_arrow:] Validar ante el SAT", type="primary", use_container_width=True, key="sat_validar_lote_btn")
+    with col_limpiar_btn:
+        if st.button(":gray[:material/delete:] Limpiar Todo", use_container_width=True, key="sat_limpiar_validacion_btn"):
+            st.session_state.sat_resultados_validacion = None
+            st.session_state.sat_validar_uploader_version += 1  # fuerza que el uploader se vea vacío de nuevo
+            st.rerun()
+
+    if iniciar_validacion:
         resultados = []
         marcador_progreso = st.empty()
         barra = st.progress(0)
@@ -2423,7 +2522,7 @@ def render_descarga_sat():
         st.session_state.sat_resultados_validacion = pd.DataFrame(resultados)
         n_vigentes = (st.session_state.sat_resultados_validacion["Estado SAT"] == "Vigente").sum()
         n_cancelados = (st.session_state.sat_resultados_validacion["Estado SAT"] == "Cancelado").sum()
-        registrar_evento("Descarga SAT", f"Validó vigencia de {len(archivos_validar)} XML ({n_vigentes} vigentes, {n_cancelados} cancelados)")
+        registrar_evento("Validar CFDI", f"Validó vigencia de {len(archivos_validar)} XML ({n_vigentes} vigentes, {n_cancelados} cancelados)")
         st.rerun()
 
     if st.session_state.sat_resultados_validacion is not None and not st.session_state.sat_resultados_validacion.empty:
@@ -2431,8 +2530,10 @@ def render_descarga_sat():
         n_vigentes = int((df_resultados["Estado SAT"] == "Vigente").sum())
         n_cancelados = int((df_resultados["Estado SAT"] == "Cancelado").sum())
         n_otros = len(df_resultados) - n_vigentes - n_cancelados
+        n_total = len(df_resultados)
 
-        c1, c2, c3 = st.columns(3)
+        st.markdown("---")
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#12B76A;">
                 <div class="bl-mini-title">Vigentes</div>
@@ -2448,6 +2549,11 @@ def render_descarga_sat():
                 <div class="bl-mini-title">Otros / Sin leer</div>
                 <div class="bl-mini-value">{n_otros}</div>
             </div>""", unsafe_allow_html=True)
+        with c4:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#38BDF8;">
+                <div class="bl-mini-title">Total Validados</div>
+                <div class="bl-mini-value">{n_total}</div>
+            </div>""", unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
@@ -2461,11 +2567,61 @@ def render_descarga_sat():
             df_resultados.to_excel(writer, sheet_name='Validacion_CFDI', index=False)
         st.download_button(":blue[:material/download:] Descargar Resultados de Validación (.XLSX)", data=buffer_val.getvalue(), file_name="Validacion_CFDI_SAT.xlsx", use_container_width=True, key="sat_descargar_validacion_btn")
 
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+        colores_estado_val = {"Vigente": "#12B76A", "Cancelado": "#EF4444"}
+
+        g1, g2 = st.columns(2)
+        with g1:
+            resumen_estado = df_resultados["Estado SAT"].value_counts().reset_index()
+            resumen_estado.columns = ["Estado SAT", "Cantidad"]
+            fig_estado = px.pie(
+                resumen_estado, names="Estado SAT", values="Cantidad", hole=0.55,
+                title="Distribución por Estado SAT", color="Estado SAT",
+                color_discrete_map=colores_estado_val,
+            )
+            fig_estado.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
+            with st.container(key="chartcard_val_estado", border=True):
+                st.plotly_chart(fig_estado, use_container_width=True)
+        with g2:
+            df_montos = df_resultados.copy()
+            df_montos["Total_Num"] = pd.to_numeric(df_montos["Total"], errors="coerce").fillna(0)
+            resumen_monto = df_montos.groupby("Estado SAT")["Total_Num"].sum().reset_index()
+            fig_monto = px.bar(
+                resumen_monto, x="Estado SAT", y="Total_Num", title="Monto Total por Estado SAT",
+                color="Estado SAT", color_discrete_map=colores_estado_val,
+            )
+            fig_monto.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, showlegend=False, yaxis_title=None)
+            with st.container(key="chartcard_val_monto", border=True):
+                st.plotly_chart(fig_monto, use_container_width=True)
+
+        g3, g4 = st.columns(2)
+        with g3:
+            top_emisores = df_resultados[df_resultados["RFC Emisor"] != "—"]["RFC Emisor"].value_counts().head(5).reset_index()
+            top_emisores.columns = ["RFC Emisor", "Cantidad"]
+            fig_emisores = px.bar(
+                top_emisores.sort_values("Cantidad"), x="Cantidad", y="RFC Emisor", orientation="h",
+                title="Top 5 RFC Emisor Validados", color_discrete_sequence=PALETA_CORPORATIVA,
+            )
+            fig_emisores.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, showlegend=False)
+            with st.container(key="chartcard_val_emisores", border=True):
+                st.plotly_chart(fig_emisores, use_container_width=True)
+        with g4:
+            top_receptores = df_resultados[df_resultados["RFC Receptor"] != "—"]["RFC Receptor"].value_counts().head(5).reset_index()
+            top_receptores.columns = ["RFC Receptor", "Cantidad"]
+            fig_receptores = px.bar(
+                top_receptores.sort_values("Cantidad"), x="Cantidad", y="RFC Receptor", orientation="h",
+                title="Top 5 RFC Receptor Validados", color_discrete_sequence=PALETA_CORPORATIVA,
+            )
+            fig_receptores.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380, showlegend=False)
+            with st.container(key="chartcard_val_receptores", border=True):
+                st.plotly_chart(fig_receptores, use_container_width=True)
+
 def render_ayuda():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("dashboard")} 1. Dashboard General</div>Diagnóstico financiero global con indicadores semafóricos de riesgo y entregable PDF.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("globe")} Descarga Masiva SAT</div>Descarga tus CFDI (Emitidos y/o Recibidos) directo del SAT usando tu e.firma, sin necesidad de entrar al portal manualmente. Requiere la librería <code>cfdiclient</code> instalada en el servidor. Tu contraseña y llave privada nunca se guardan en disco.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("check")} Validar CFDI (Vigente/Cancelado)</div>Sube uno o varios XML y consulta al SAT si siguen vigentes o fueron cancelados — usa el mismo servicio público del código QR, sin necesidad de e.firma.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("bank")} 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("document")} 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("invoice")} 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
@@ -2494,6 +2650,7 @@ CATEGORIAS = {
     ":blue[:material/bar_chart:] Panel General": [(":blue[:material/bar_chart:] Dashboard", render_dashboard)],
     ":blue[:material/refresh:] Conciliaciones": [
         (":blue[:material/cloud_download:] Descarga Masiva SAT", render_descarga_sat),
+        (":green[:material/check_circle:] Validar CFDI (Vigente/Cancelado)", render_validar_cfdi),
         (":blue[:material/account_balance:] Bancos vs Auxiliar", render_bancos),
         (":gray[:material/description:] XML vs Contabilidad", render_xml),
         (":orange[:material/receipt_long:] Clientes y Proveedores", render_saldos),
@@ -2524,23 +2681,68 @@ st.markdown("---")
 def _clave_segura(texto):
     return re.sub(r'[^a-zA-Z0-9]+', '_', texto).strip('_').lower()
 
-# ---------- Navegación tipo "pastilla": rectángulos redondeados, el activo
-# en azul celeste (reutiliza el estilo de los botones type="primary") ----------
+def _texto_sin_markup(texto):
+    """Quita los shortcodes :color[:material/x:] y deja solo el texto legible."""
+    return re.sub(r':[a-z]+\[:material/[a-z_]+:\]\s*', '', texto).strip()
+
+# ---------- Buscador de secciones ----------
+busqueda_seccion = st.text_input(
+    ":gray[:material/search:] Buscar una sección", placeholder="Buscar una sección (ej. bancos, dashboard, usuarios…)",
+    key="buscador_seccion", label_visibility="collapsed",
+)
+if busqueda_seccion.strip():
+    termino = busqueda_seccion.strip().lower()
+    coincidencias = [
+        (nombre_cat, nombre_mod)
+        for nombre_cat, modulos_cat in CATEGORIAS.items()
+        for nombre_mod, _ in modulos_cat
+        if termino in _texto_sin_markup(nombre_mod).lower()
+    ]
+    if coincidencias:
+        for nombre_cat, nombre_mod in coincidencias[:8]:
+            if st.button(
+                f"{_texto_sin_markup(nombre_mod)}  —  :gray[{_texto_sin_markup(nombre_cat)}]",
+                key=f"buscar_resultado_{_clave_segura(nombre_cat)}_{_clave_segura(nombre_mod)}",
+                use_container_width=True,
+            ):
+                st.session_state.categoria_activa_pill = nombre_cat
+                st.session_state.modulo_activo_pill = nombre_mod
+                st.rerun()
+    else:
+        st.caption(":gray[Sin resultados para esa búsqueda.]")
+    st.markdown("---")
+
+# ---------- Categorías: pestañas de texto subrayadas (el activo en celeste) ----------
 if "categoria_activa_pill" not in st.session_state or st.session_state.categoria_activa_pill not in CATEGORIAS:
     st.session_state.categoria_activa_pill = list(CATEGORIAS.keys())[0]
+
+_clave_cat_activa = _clave_segura(st.session_state.categoria_activa_pill)
+st.markdown(f"""<style>
+    div[class*="st-key-navcat_"] button {{
+        background: transparent !important; border: none !important; box-shadow: none !important;
+        border-radius: 0 !important; font-weight: 600 !important;
+        padding: 2px 4px 8px 4px !important; border-bottom: 2px solid transparent !important;
+    }}
+    div[class*="st-key-navcat_"] button p {{ color: #8B96A5; }}
+    div[class*="st-key-navcat_{_clave_cat_activa}"] button {{
+        border-bottom: 2px solid #38BDF8 !important; font-weight: 700 !important;
+    }}
+    div[class*="st-key-navcat_{_clave_cat_activa}"] button p {{ color: #38BDF8; }}
+</style>""", unsafe_allow_html=True)
 
 cols_cat = st.columns(len(CATEGORIAS))
 for col, nombre_cat in zip(cols_cat, CATEGORIAS.keys()):
     with col:
-        es_cat_activa = st.session_state.categoria_activa_pill == nombre_cat
-        if st.button(nombre_cat, key=f"navcat_{_clave_segura(nombre_cat)}", type="primary" if es_cat_activa else "secondary", use_container_width=True):
-            st.session_state.categoria_activa_pill = nombre_cat
-            # Al cambiar de categoría, arrancamos en el primer módulo de esa categoría.
-            st.session_state.modulo_activo_pill = CATEGORIAS[nombre_cat][0][0]
-            st.rerun()
+        with st.container(key=f"navcat_{_clave_segura(nombre_cat)}"):
+            if st.button(nombre_cat, key=f"navcat_btn_{_clave_segura(nombre_cat)}", use_container_width=True):
+                st.session_state.categoria_activa_pill = nombre_cat
+                # Al cambiar de categoría, arrancamos en el primer módulo de esa categoría.
+                st.session_state.modulo_activo_pill = CATEGORIAS[nombre_cat][0][0]
+                st.rerun()
 
 st.markdown("---")
 
+# ---------- Módulos: pastillas (rectángulos redondeados), el activo en celeste ----------
 pestanas_categoria = CATEGORIAS[st.session_state.categoria_activa_pill]
 nombres_modulos = [nombre for nombre, _ in pestanas_categoria]
 if "modulo_activo_pill" not in st.session_state or st.session_state.modulo_activo_pill not in nombres_modulos:
@@ -2555,10 +2757,6 @@ for col, (nombre_mod, _) in zip(cols_mod, pestanas_categoria):
             st.rerun()
 
 st.markdown("---")
-
-def _texto_sin_markup(texto):
-    """Quita los shortcodes :color[:material/x:] y deja solo el texto legible, para usarlo en el breadcrumb."""
-    return re.sub(r':[a-z]+\[:material/[a-z_]+:\]\s*', '', texto).strip()
 
 st.caption(f":gray[{_texto_sin_markup(st.session_state.categoria_activa_pill)}]  ›  **{_texto_sin_markup(st.session_state.modulo_activo_pill)}**")
 
@@ -2576,4 +2774,4 @@ with st.container(key=f"panel_modulo_{_clave_modulo}"):
 # PIE DE PÁGINA
 # ==============================================================================
 st.markdown("---")
-st.caption(f":gray[TaxFlow-Diamond · v2.4 · Desarrollado por Jose Valencia · Sesión: {st.session_state.usuario_autenticado or 'N/D'} ({st.session_state.rol_actual})]")
+st.markdown("<p style='text-align:center; color:#8B96A5; font-size:13px;'>TaxFlow-Diamond · v2.4 · Desarrollado por Jose Valencia</p>", unsafe_allow_html=True)
