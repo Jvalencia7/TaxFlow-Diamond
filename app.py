@@ -2833,6 +2833,59 @@ def render_centro_exportacion():
             else:
                 st.button(":gray[:material/download:] Descargar", disabled=True, key=f"export_xlsx_disabled_{i}", use_container_width=True)
 
+def generar_pdf_pendientes_complementos(df_pendientes, empresa, periodo, auditor):
+    """Reporte de varias páginas, listo para compartir, con las facturas que
+    quedaron 'Sin Complemento' o con 'Diferencia en Importes' tras la
+    conciliación. Usa el mismo membrete corporativo que el resto de los PDF
+    de la app (logo, folio, fecha) para que se vea consistente y profesional."""
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    filas_por_pagina = 26
+    total_paginas = max(1, -(-len(df_pendientes) // filas_por_pagina))
+    columnas_tabla = ["UUID Factura", "Estado", "Total Esperado", "Total Pagado", "Dif. Total"]
+    anchos_x = [0.06, 0.46, 0.63, 0.79, 0.93]
+    colores_estado_pdf = {"Diferencia en Importes": "#B45309", "Sin Complemento": "#B91C1C"}
+
+    buffer_pdf = io.BytesIO()
+    with PdfPages(buffer_pdf) as pdf:
+        for pagina in range(total_paginas):
+            fig, ax = plt.subplots(figsize=(11, 8.5))
+            ax.axis('off')
+            if pagina == 0:
+                y = _agregar_membrete_pdf(fig, "FACTURAS PENDIENTES DE COMPLEMENTO DE PAGO", empresa, periodo, auditor)
+                y -= 0.02
+                n_sin_complemento = int((df_pendientes["Estado"] == "Sin Complemento").sum())
+                n_con_diferencia = int((df_pendientes["Estado"] == "Diferencia en Importes").sum())
+                plt.text(0.06, y, f"Total de facturas pendientes: {len(df_pendientes)}   ·   Sin Complemento: {n_sin_complemento}   ·   Con Diferencia en Importes: {n_con_diferencia}", fontsize=10, weight='bold')
+                y -= 0.035
+            else:
+                plt.text(0.06, 0.95, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=12, weight='bold', color='#0EA5E9')
+                plt.text(0.06, 0.925, "Facturas Pendientes de Complemento de Pago (continuación)", fontsize=10, weight='bold')
+                y = 0.885
+
+            for x, titulo_col in zip(anchos_x, columnas_tabla):
+                plt.text(x, y, titulo_col, fontsize=8.5, weight='bold', color='#101828')
+            y -= 0.018
+            plt.text(0.06, y, "-" * 145, color='gray', fontsize=7)
+            y -= 0.028
+
+            inicio = pagina * filas_por_pagina
+            fin = inicio + filas_por_pagina
+            for _, fila in df_pendientes.iloc[inicio:fin].iterrows():
+                color_estado = colores_estado_pdf.get(fila["Estado"], "#000000")
+                plt.text(anchos_x[0], y, str(fila["UUID Factura"])[:38], fontsize=7.5)
+                plt.text(anchos_x[1], y, fila["Estado"], fontsize=7.5, color=color_estado, weight='bold')
+                plt.text(anchos_x[2], y, moneda(fila["Total Esperado"]), fontsize=7.5)
+                plt.text(anchos_x[3], y, moneda(fila["Total Pagado"]), fontsize=7.5)
+                plt.text(anchos_x[4], y, moneda(fila["Dif. Total"]), fontsize=7.5)
+                y -= 0.030
+
+            plt.text(0.06, 0.03, f"Página {pagina + 1} de {total_paginas}  ·  Generado el {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", fontsize=7.5, color='gray')
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close(fig)
+
+    return buffer_pdf.getvalue()
+
 def render_conciliacion_pagos():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("cash")} Conciliación de Complementos de Pago</div>', unsafe_allow_html=True)
@@ -2988,7 +3041,28 @@ def render_conciliacion_pagos():
         buffer_cp = io.BytesIO()
         with pd.ExcelWriter(buffer_cp, engine='openpyxl') as writer:
             df_r.to_excel(writer, sheet_name='Conciliacion_Pagos', index=False)
-        st.download_button(":blue[:material/download:] Descargar Conciliación de Pagos (.XLSX)", data=buffer_cp.getvalue(), file_name="Conciliacion_Complementos_Pago.xlsx", use_container_width=True, key="cp_descargar_btn")
+        st.download_button(":blue[:material/download:] Descargar Conciliación Completa (.XLSX)", data=buffer_cp.getvalue(), file_name="Conciliacion_Complementos_Pago.xlsx", use_container_width=True, key="cp_descargar_btn")
+
+        df_pendientes_cp = df_r[df_r["Estado"] != "Conciliado"].reset_index(drop=True)
+        if not df_pendientes_cp.empty:
+            st.markdown("---")
+            st.markdown(f'<div class="section-header">{icono("clipboard")} Reporte de Pendientes (para compartir)</div>', unsafe_allow_html=True)
+            st.caption(f":orange[:material/warning:] {len(df_pendientes_cp)} factura(s) siguen pendientes — sin complemento o con diferencia de importes. Descarga el reporte listo para enviar a tu cliente o al equipo de cuentas por cobrar.")
+            cp_exp1, cp_exp2 = st.columns(2)
+            with cp_exp1:
+                buffer_pend_xlsx = io.BytesIO()
+                with pd.ExcelWriter(buffer_pend_xlsx, engine='openpyxl') as writer:
+                    df_pendientes_cp.to_excel(writer, sheet_name='Pendientes', index=False)
+                st.download_button(
+                    ":blue[:material/download:] Descargar Pendientes (.XLSX)", data=buffer_pend_xlsx.getvalue(),
+                    file_name="Facturas_Pendientes_Complemento_Pago.xlsx", use_container_width=True, key="cp_descargar_pendientes_xlsx_btn",
+                )
+            with cp_exp2:
+                pdf_pendientes_cp = generar_pdf_pendientes_complementos(df_pendientes_cp, st.session_state.empresa, st.session_state.periodo, st.session_state.auditor)
+                st.download_button(
+                    ":red[:material/description:] Descargar Pendientes (.PDF)", data=pdf_pendientes_cp,
+                    file_name="Facturas_Pendientes_Complemento_Pago.pdf", mime="application/pdf", use_container_width=True, key="cp_descargar_pendientes_pdf_btn",
+                )
 
         st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
         colores_estado_cp = {"Conciliado": "#12B76A", "Sin Complemento": "#EF4444", "Diferencia en Importes": "#F79009"}
@@ -3072,34 +3146,34 @@ def render_ayuda():
 # una sola barra plana de 17 pestañas, evita que la navegación se desborde
 # visualmente y ayuda a que la app se sienta organizada por área de trabajo.
 CATEGORIAS = {
-    ":blue[:material/bar_chart:] Panel General": [(":blue[:material/bar_chart:] Dashboard", render_dashboard)],
+    ":blue[:material/bar_chart:] Panel General": [(":blue[:material/bar_chart:]", "Dashboard", render_dashboard)],
     ":blue[:material/refresh:] Conciliaciones": [
-        (":blue[:material/cloud_download:] Descarga Masiva SAT", render_descarga_sat),
-        (":green[:material/check_circle:] Validar CFDI", render_validar_cfdi),
-        (":green[:material/cash:] Complementos de Pago", render_conciliacion_pagos),
-        (":blue[:material/account_balance:] Bancos vs Auxiliar", render_bancos),
-        (":gray[:material/description:] XML vs Contabilidad", render_xml),
-        (":orange[:material/receipt_long:] Clientes y Proveedores", render_saldos),
-        (":blue[:material/public:] Multidivisa USD", render_multidivisa),
-        (":violet[:material/badge:] Nómina CFDI", render_nomina),
-        (":orange[:material/inventory_2:] Inventarios", render_inventarios),
-        (":green[:material/payments:] IVA Flujo", render_iva),
-        (":orange[:material/factory:] Activo Fijo", render_activo_fijo),
+        (":blue[:material/cloud_download:]", "Descarga Masiva SAT", render_descarga_sat),
+        (":green[:material/check_circle:]", "Validar CFDI", render_validar_cfdi),
+        (":green[:material/paid:]", "Complementos de Pago", render_conciliacion_pagos),
+        (":blue[:material/account_balance:]", "Bancos vs Auxiliar", render_bancos),
+        (":yellow[:material/description:]", "XML vs Contabilidad", render_xml),
+        (":orange[:material/receipt_long:]", "Clientes y Proveedores", render_saldos),
+        (":blue[:material/public:]", "Multidivisa USD", render_multidivisa),
+        (":violet[:material/badge:]", "Nómina CFDI", render_nomina),
+        (":orange[:material/inventory_2:]", "Inventarios", render_inventarios),
+        (":green[:material/payments:]", "IVA Flujo", render_iva),
+        (":orange[:material/factory:]", "Activo Fijo", render_activo_fijo),
     ],
     ":green[:material/trending_up:] Análisis y Cumplimiento": [
-        (":green[:material/trending_up:] Razones Financieras", render_razones),
-        (":violet[:material/balance:] Cumplimiento SAT", render_sat),
+        (":green[:material/trending_up:]", "Razones Financieras", render_razones),
+        (":violet[:material/balance:]", "Cumplimiento SAT", render_sat),
     ],
     ":violet[:material/shield:] Gobierno y Auditoría": [
-        (":green[:material/check_circle:] Revisión y Aprobación", render_aprobacion),
-        (":blue[:material/checklist:] Checklist PBC", render_pbc),
-        (":orange[:material/history:] Bitácora", render_bitacora),
+        (":green[:material/check_circle:]", "Revisión y Aprobación", render_aprobacion),
+        (":blue[:material/checklist:]", "Checklist PBC", render_pbc),
+        (":orange[:material/history:]", "Bitácora", render_bitacora),
     ],
-    ":gray[:material/settings:] Sistema": [
-        (":gray[:material/settings:] Configuración", render_configuracion),
-        (":violet[:material/group:] Gestión de Usuarios", render_gestion_usuarios),
-        (":gray[:material/download:] Centro de Exportación", render_centro_exportacion),
-        (":blue[:material/help:] Ayuda", render_ayuda),
+    ":blue[:material/settings:] Sistema": [
+        (":blue[:material/settings:]", "Configuración", render_configuracion),
+        (":violet[:material/group:]", "Gestión de Usuarios", render_gestion_usuarios),
+        (":orange[:material/download:]", "Centro de Exportación", render_centro_exportacion),
+        (":blue[:material/help:]", "Ayuda", render_ayuda),
     ],
 }
 
@@ -3107,8 +3181,8 @@ CATEGORIAS = {
 # acceso, en vez de mostrarlos y bloquear el contenido adentro (ej. Gestión
 # de Usuarios es solo para Administrador).
 if st.session_state.rol_actual != "Administrador":
-    CATEGORIAS[":gray[:material/settings:] Sistema"] = [
-        (nombre, funcion) for nombre, funcion in CATEGORIAS[":gray[:material/settings:] Sistema"]
+    CATEGORIAS[":blue[:material/settings:] Sistema"] = [
+        (icono_mod, nombre, funcion) for icono_mod, nombre, funcion in CATEGORIAS[":blue[:material/settings:] Sistema"]
         if funcion is not render_gestion_usuarios
     ]
 
@@ -3131,13 +3205,13 @@ if busqueda_seccion.strip():
     coincidencias = [
         (nombre_cat, nombre_mod)
         for nombre_cat, modulos_cat in CATEGORIAS.items()
-        for nombre_mod, _ in modulos_cat
-        if termino in _texto_sin_markup(nombre_mod).lower()
+        for _, nombre_mod, _ in modulos_cat
+        if termino in nombre_mod.lower()
     ]
     if coincidencias:
         for nombre_cat, nombre_mod in coincidencias[:8]:
             if st.button(
-                f"{_texto_sin_markup(nombre_mod)}  —  :gray[{_texto_sin_markup(nombre_cat)}]",
+                f"{nombre_mod}  —  :gray[{_texto_sin_markup(nombre_cat)}]",
                 key=f"buscar_resultado_{_clave_segura(nombre_cat)}_{_clave_segura(nombre_mod)}",
                 use_container_width=True,
             ):
@@ -3164,6 +3238,12 @@ st.markdown(f"""<style>
         border-bottom: 2px solid #38BDF8 !important; font-weight: 700 !important;
     }}
     div[class*="st-key-navcat_{_clave_cat_activa}"] button p {{ color: #38BDF8; }}
+
+    /* Botones de módulo: solo ícono, más grande y centrado (sin texto) */
+    div[class*="st-key-navmod_"] button {{
+        min-height: 52px !important; padding: 6px !important;
+    }}
+    div[class*="st-key-navmod_"] button p {{ font-size: 26px !important; line-height: 1 !important; }}
 </style>""", unsafe_allow_html=True)
 
 cols_cat = st.columns(len(CATEGORIAS))
@@ -3173,35 +3253,36 @@ for col, nombre_cat in zip(cols_cat, CATEGORIAS.keys()):
             if st.button(nombre_cat, key=f"navcat_btn_{_clave_segura(nombre_cat)}", use_container_width=True):
                 st.session_state.categoria_activa_pill = nombre_cat
                 # Al cambiar de categoría, arrancamos en el primer módulo de esa categoría.
-                st.session_state.modulo_activo_pill = CATEGORIAS[nombre_cat][0][0]
+                st.session_state.modulo_activo_pill = CATEGORIAS[nombre_cat][0][1]
                 st.rerun()
 
 st.markdown("---")
 
-# ---------- Módulos: pastillas (rectángulos redondeados), el activo en celeste ----------
+# ---------- Módulos: solo ícono (grande, con color propio), el nombre real
+# se muestra como tooltip al pasar el mouse y en el breadcrumb de abajo ----------
 pestanas_categoria = CATEGORIAS[st.session_state.categoria_activa_pill]
-nombres_modulos = [nombre for nombre, _ in pestanas_categoria]
+nombres_modulos = [nombre for _, nombre, _ in pestanas_categoria]
 if "modulo_activo_pill" not in st.session_state or st.session_state.modulo_activo_pill not in nombres_modulos:
     st.session_state.modulo_activo_pill = nombres_modulos[0]
 
 cols_mod = st.columns(len(pestanas_categoria))
-for col, (nombre_mod, _) in zip(cols_mod, pestanas_categoria):
+for col, (icono_mod, nombre_mod, _) in zip(cols_mod, pestanas_categoria):
     with col:
         es_mod_activo = st.session_state.modulo_activo_pill == nombre_mod
-        if st.button(nombre_mod, key=f"navmod_{_clave_segura(nombre_mod)}", type="primary" if es_mod_activo else "secondary", use_container_width=True):
+        if st.button(icono_mod, key=f"navmod_{_clave_segura(nombre_mod)}", type="primary" if es_mod_activo else "secondary", use_container_width=True, help=nombre_mod):
             st.session_state.modulo_activo_pill = nombre_mod
             st.rerun()
 
 st.markdown("---")
 
-st.caption(f":gray[{_texto_sin_markup(st.session_state.categoria_activa_pill)}]  ›  **{_texto_sin_markup(st.session_state.modulo_activo_pill)}**")
+st.caption(f":gray[{_texto_sin_markup(st.session_state.categoria_activa_pill)}]  ›  **{st.session_state.modulo_activo_pill}**")
 
 # Cada módulo tiene un cuerpo totalmente distinto en este mismo punto del
 # código. Sin un 'key' fijo, el navegador a veces intenta reconciliar el
 # árbol anterior con el nuevo y truena con
 # "NotFoundError: Failed to execute 'removeChild'". Envolver cada módulo en
 # un contenedor con key único obliga a desmontar limpio el anterior.
-funcion_activa = dict(pestanas_categoria)[st.session_state.modulo_activo_pill]
+funcion_activa = {nombre: funcion for _, nombre, funcion in pestanas_categoria}[st.session_state.modulo_activo_pill]
 _clave_modulo = _clave_segura(st.session_state.modulo_activo_pill)
 with st.container(key=f"panel_modulo_{_clave_modulo}"):
     funcion_activa()
