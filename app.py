@@ -23,7 +23,7 @@ st.set_page_config(
     page_title="TaxFlow-Diamond | Suite de Conciliación",
     page_icon=":blue[:material/diamond:]",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 # Inyección de estilos CSS para visualización ejecutiva e indicadores semafóricos
@@ -91,7 +91,7 @@ st.markdown("""
 
     /* ---- Estilo Dashboard tipo BlackLine (versión oscura) ---- */
     .bl-wrapper { background-color: #0D1117; padding: 24px; border-radius: 14px; }
-    .bl-card { background:#161B22; border-radius:10px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25); border:1px solid #2A313C; height:100%; }
+    .bl-card { background:#161B22; border-radius:10px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25); border:1px solid #2A313C; height:100%; min-height:162px; }
     .bl-card-title { font-size:13px; color:#8B96A5; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
     .bl-card-value { font-size:32px; font-weight:700; color:#E6EDF3; line-height:1.1; }
     .bl-card-sub { font-size:12px; color:#6E7887; margin-top:2px; }
@@ -129,6 +129,27 @@ st.markdown("""
         border: 1px solid #2A313C !important;
         border-radius: 12px !important;
         padding: 14px 10px !important;
+    }
+
+    /* ================================================================
+       RESPONSIVO: pantallas angostas (celular). Streamlit ya apila las
+       columnas solo automáticamente por debajo de ~768px — aquí solo
+       ajustamos tamaños/espaciados para que no se vea gigante o cortado.
+       ================================================================ */
+    @media (max-width: 768px) {
+        .main-title { font-size: 26px !important; }
+        .subtitle { font-size: 13px !important; margin-bottom: 16px !important; }
+        .section-header { font-size: 18px !important; }
+        div[class*="st-key-header_logo"] img { max-width: 90px !important; }
+        .bl-card, .bl-mini-card, .help-card { padding: 14px 16px !important; min-height: 0 !important; }
+        .bl-card-value { font-size: 24px !important; }
+        .bl-mini-value { font-size: 20px !important; }
+        .bl-wrapper { padding: 12px !important; }
+        div[class*="st-key-navmod_"] button p { font-size: 22px !important; }
+        div[class*="st-key-navmod_"] button { min-height: 44px !important; }
+        div[class*="st-key-chartcard_"] { padding: 8px 4px !important; }
+        [data-testid="stDataFrame"] { font-size: 12px !important; }
+        .block-container { padding-left: 1rem !important; padding-right: 1rem !important; padding-top: 1.5rem !important; }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -346,13 +367,14 @@ except Exception:
 _fecha_larga_header = f"{_ahora_header.day} de {_MESES_ES[_ahora_header.month - 1]} de {_ahora_header.year}"
 _hora_header = _ahora_header.strftime("%H:%M")
 
-col_logo, col_titulo, col_fecha_header = st.columns([0.9, 2.1, 1])
+col_logo, col_titulo, col_fecha_header = st.columns([1.1, 1.9, 1], vertical_alignment="center")
 with col_logo:
     if st.session_state.logo_bytes:
-        st.image(st.session_state.logo_bytes, width=110)
+        with st.container(key="header_logo"):
+            st.image(st.session_state.logo_bytes, width=160)
 with col_titulo:
-    st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="main-title" style="text-align:center;">TaxFlow-Diamond</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle" style="text-align:center;">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
 with col_fecha_header:
     st.markdown(f"""<div style="display:flex; justify-content:flex-end; margin-top:8px;">
       <div style="background:#161B22; border:1px solid #2A313C; border-radius:10px;
@@ -987,7 +1009,7 @@ def render_dashboard():
     st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
 
     # ---------- Sección "Reconciliations": barra segmentada, un segmento por módulo ----------
-    colores_estado = {"no_prep": "#F79009", "progreso": "#6172F3", "completado": "#12B76A"}
+    colores_estado = {"no_prep": "#FF7F50", "progreso": "#6172F3", "completado": "#12B76A"}
     segmentos_html = ""
     leyenda_html = ""
     ancho_igual = 100 / len(estado["modulos"])
@@ -1053,7 +1075,7 @@ def render_dashboard():
         ])
         fig_modulos = px.bar(
             df_graf_modulos, x="Filas", y="Módulo", color="Estado", orientation="h",
-            color_discrete_map={"No preparado": "#F79009", "En progreso": "#6172F3", "Completado": "#12B76A"},
+            color_discrete_map={"No preparado": "#FF7F50", "En progreso": "#6172F3", "Completado": "#12B76A"},
             title="Estado por Módulo (filas de datos)",
         )
         fig_modulos.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", legend_title_text="", height=380)
@@ -1066,7 +1088,7 @@ def render_dashboard():
         })
         fig_dona = px.pie(
             df_dona, names="Estado", values="Módulos", hole=0.55,
-            color="Estado", color_discrete_map={"No preparado": "#F79009", "En progreso": "#6172F3", "Completado": "#12B76A"},
+            color="Estado", color_discrete_map={"No preparado": "#FF7F50", "En progreso": "#6172F3", "Completado": "#12B76A"},
             title="Módulos por Estado",
         )
         fig_dona.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#E6EDF3", height=380)
@@ -1087,9 +1109,21 @@ def render_dashboard():
         st.markdown(f"<div class='kpi-card {clase_semaforo}'>{mensaje_semaforo} ({porcentaje_riesgo:.2f}% desfase)</div>", unsafe_allow_html=True)
         
         m1, m2, m3 = st.columns(3)
-        m1.metric("Capital Conciliado", moneda(st.session_state.suma_conciliado))
-        m2.metric("Pendientes Banco", moneda(st.session_state.suma_banco_p), delta_color="inverse")
-        m3.metric("Pendientes Auxiliar", moneda(st.session_state.suma_aux_p), delta_color="inverse")
+        with m1:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#12B76A;">
+                <div class="bl-mini-title">Capital Conciliado</div>
+                <div class="bl-mini-value">{moneda(st.session_state.suma_conciliado)}</div>
+            </div>""", unsafe_allow_html=True)
+        with m2:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#F79009;">
+                <div class="bl-mini-title">Pendientes Banco</div>
+                <div class="bl-mini-value">{moneda(st.session_state.suma_banco_p)}</div>
+            </div>""", unsafe_allow_html=True)
+        with m3:
+            st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#F79009;">
+                <div class="bl-mini-title">Pendientes Auxiliar</div>
+                <div class="bl-mini-value">{moneda(st.session_state.suma_aux_p)}</div>
+            </div>""", unsafe_allow_html=True)
         
         pdf_dictamen = generar_dictamen_pdf(st.session_state.empresa, st.session_state.periodo, st.session_state.auditor, st.session_state.suma_conciliado, st.session_state.suma_banco_p, st.session_state.suma_aux_p)
         st.download_button(label=":blue[:material/download:] Descargar Dictamen Certificado (PDF)", data=pdf_dictamen, file_name="Dictamen_Auditoria.pdf", mime="application/pdf", use_container_width=True)
