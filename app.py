@@ -91,7 +91,7 @@ st.markdown("""
 
     /* ---- Estilo Dashboard tipo BlackLine (versión oscura) ---- */
     .bl-wrapper { background-color: #0D1117; padding: 24px; border-radius: 14px; }
-    .bl-card { background:#161B22; border-radius:10px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25); border:1px solid #2A313C; height:100%; min-height:162px; }
+    .bl-card { background:#161B22; border-radius:10px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25); border:1px solid #2A313C; height:182px !important; box-sizing:border-box; }
     .bl-card-title { font-size:13px; color:#8B96A5; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
     .bl-card-value { font-size:32px; font-weight:700; color:#E6EDF3; line-height:1.1; }
     .bl-card-sub { font-size:12px; color:#6E7887; margin-top:2px; }
@@ -141,7 +141,7 @@ st.markdown("""
         .subtitle { font-size: 13px !important; margin-bottom: 16px !important; }
         .section-header { font-size: 18px !important; }
         div[class*="st-key-header_logo"] img { max-width: 90px !important; }
-        .bl-card, .bl-mini-card, .help-card { padding: 14px 16px !important; min-height: 0 !important; }
+        .bl-card, .bl-mini-card, .help-card { padding: 14px 16px !important; height: auto !important; min-height: 0 !important; }
         .bl-card-value { font-size: 24px !important; }
         .bl-mini-value { font-size: 20px !important; }
         .bl-wrapper { padding: 12px !important; }
@@ -268,6 +268,182 @@ variables_sesion = {
 
 for llave, valor_defecto in variables_sesion.items():
     if llave not in st.session_state: st.session_state[llave] = valor_defecto
+
+# ==============================================================================
+# FUNCIONES AUXILIARES QUE EL SIDEBAR NECESITA DESDE MUY TEMPRANO (el sidebar se
+# renderiza casi al inicio del script, antes de que Python llegue a donde antes
+# estaban definidas estas funciones más abajo — por eso viven aquí ahora).
+# ==============================================================================
+def registrar_evento(modulo, accion):
+    """Agrega un renglón a la Bitácora de Auditoría con usuario, módulo, acción y hora."""
+    st.session_state.bitacora_eventos.append({
+        "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Usuario": st.session_state.usuario_actual if st.session_state.usuario_actual else "Sin identificar",
+        "Rol": st.session_state.rol_actual,
+        "Módulo": modulo,
+        "Acción": accion,
+    })
+    st.session_state.ultima_actualizacion_modulos[modulo] = datetime.datetime.now()
+
+def _mostrar_ultima_actualizacion(nombre_modulo):
+    """Muestra 'Última actualización: hace X' arriba de un módulo, si ya se
+    registró alguna acción para él (vía registrar_evento)."""
+    momento = st.session_state.ultima_actualizacion_modulos.get(nombre_modulo)
+    if momento is None:
+        return
+    segundos = (datetime.datetime.now() - momento).total_seconds()
+    if segundos < 60: texto = "hace unos segundos"
+    elif segundos < 3600: texto = f"hace {int(segundos // 60)} min"
+    elif segundos < 86400: texto = f"hace {int(segundos // 3600)} h"
+    else: texto = momento.strftime("el %d/%m/%Y a las %H:%M")
+    st.caption(f":gray[:material/calendar_month: Última actualización: {texto}]")
+
+def _estado_vacio(icono_nombre, titulo, mensaje, color="#38BDF8"):
+    """Tarjeta de 'estado vacío' con ícono + título + mensaje de acción clara,
+    para usarse en vez de un simple st.info() cuando un módulo todavía no
+    tiene datos cargados."""
+    st.markdown(f"""<div class="bl-card" style="text-align:center; padding:36px 24px; border-top:3px solid {color};">
+        <div style="margin-bottom:10px;">{icono(icono_nombre, 36, color)}</div>
+        <div style="font-family:Manrope,sans-serif; font-weight:800; font-size:18px; color:#E6EDF3; margin-bottom:6px;">{titulo}</div>
+        <div style="font-size:13.5px; color:#8B96A5; max-width:480px; margin:0 auto;">{mensaje}</div>
+    </div>""", unsafe_allow_html=True)
+
+# ==============================================================================
+# CONFIRMACIÓN ANTES DE ACCIONES DESTRUCTIVAS
+# ==============================================================================
+# Patrón reutilizable: en vez de que cada botón 'Eliminar'/'Vaciar'/'Cerrar
+# Sesión' ejecute su acción al primer clic, guarda en session_state QUÉ se
+# quiere hacer y abre un modal de confirmación real (st.dialog). Solo si el
+# usuario confirma ahí, se ejecuta la acción.
+if "_accion_pendiente_confirmacion" not in st.session_state:
+    st.session_state._accion_pendiente_confirmacion = None
+
+def solicitar_confirmacion(tipo, mensaje, datos=None):
+    """Llamar esto DENTRO del 'if st.button(...)' de una acción destructiva,
+    en vez de ejecutar la acción directo. Abre el modal de confirmación."""
+    st.session_state._accion_pendiente_confirmacion = {"tipo": tipo, "mensaje": mensaje, "datos": datos or {}}
+    _dialogo_confirmacion()
+
+@st.dialog("Confirmar acción")
+def _dialogo_confirmacion():
+    accion = st.session_state._accion_pendiente_confirmacion
+    if not accion:
+        st.write("No hay ninguna acción pendiente.")
+        return
+    st.warning(f":orange[:material/warning:] {accion['mensaje']}")
+    col_cancelar, col_confirmar = st.columns(2)
+    with col_cancelar:
+        if st.button(":gray[:material/close:] Cancelar", use_container_width=True, key="dialogo_cancelar_btn"):
+            st.session_state._accion_pendiente_confirmacion = None
+            st.rerun()
+    with col_confirmar:
+        if st.button(":red[:material/check_circle:] Sí, continuar", type="primary", use_container_width=True, key="dialogo_confirmar_btn"):
+            _ejecutar_accion_confirmada(accion["tipo"], accion["datos"])
+            st.session_state._accion_pendiente_confirmacion = None
+            st.rerun()
+
+def _ejecutar_accion_confirmada(tipo, datos):
+    """Lógica real de cada acción destructiva — solo se ejecuta después de
+    que el usuario confirma explícitamente en el modal."""
+    if tipo == "cerrar_sesion":
+        st.session_state.bitacora_eventos.append({
+            "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Usuario": st.session_state.usuario_autenticado, "Rol": st.session_state.rol_actual,
+            "Módulo": "Seguridad", "Acción": "Cerró sesión",
+        })
+        _eventos_previos = st.session_state.bitacora_eventos
+        for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
+        st.session_state.bitacora_eventos = _eventos_previos
+        for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
+            st.session_state.pop(llave_editor, None)
+        st.session_state.sesion_autenticada = False
+        st.session_state.usuario_autenticado = None
+
+    elif tipo == "vaciar_bitacora":
+        st.session_state.bitacora_eventos = []
+
+    elif tipo == "eliminar_usuario":
+        nombre_u = datos["nombre"]
+        if nombre_u in st.session_state.usuarios_sistema:
+            del st.session_state.usuarios_sistema[nombre_u]
+            registrar_evento("Gestión de Usuarios", f"Eliminó al usuario '{nombre_u}'")
+
+    elif tipo == "eliminar_snapshot":
+        nombre_snap = datos["nombre"]
+        if nombre_snap in st.session_state.auditorias_guardadas:
+            del st.session_state.auditorias_guardadas[nombre_snap]
+
+def _serializar_estado(diccionario):
+    """Convierte un dict de variables de sesión (incluyendo DataFrames y bytes)
+    a una forma 100% serializable en JSON. Se usa tanto para el respaldo
+    manual (.json descargable) como para las auditorías guardadas en memoria
+    (multiempresa), para no duplicar la lógica de conversión."""
+    resultado = {}
+    for llave, valor in diccionario.items():
+        if isinstance(valor, pd.DataFrame):
+            resultado[llave] = {"tipo": "dataframe", "datos": _dataframe_a_json_seguro(valor)}
+        elif llave == 'logo_bytes' and valor is not None:
+            resultado[llave] = {"tipo": "bytes", "datos": valor.hex()}
+        else:
+            resultado[llave] = {"tipo": "nativo", "datos": valor}
+    return resultado
+
+def _dataframe_a_json_seguro(df):
+    """to_json() de pandas convierte objetos date/datetime SUELTOS (columnas
+    dtype='object' con valores datetime.date, como nuestra '_Fecha_Norm') en
+    números epoch en vez de fechas legibles, y al restaurar quedan como
+    enteros irreconocibles — rompiendo tanto la vista como cualquier
+    comparación de fechas posterior (ej. el 'recordar' la clasificación por
+    departamento). Por eso convertimos esas columnas a texto ISO ANTES de
+    serializar, así el viaje por JSON es transparente."""
+    df_seguro = df.copy()
+    for columna in df_seguro.columns:
+        if df_seguro[columna].dtype == "object":
+            contiene_fechas = df_seguro[columna].apply(lambda v: isinstance(v, (datetime.date, datetime.datetime))).any()
+            if contiene_fechas:
+                df_seguro[columna] = df_seguro[columna].apply(
+                    lambda v: v.isoformat() if isinstance(v, (datetime.date, datetime.datetime)) else v
+                )
+    return df_seguro.to_json(orient='split')
+
+def _deserializar_estado(paquete):
+    """Inverso de _serializar_estado."""
+    resultado = {}
+    for llave, info in paquete.items():
+        if info["tipo"] == "dataframe":
+            resultado[llave] = pd.read_json(io.StringIO(info["datos"]), orient='split')
+        elif info["tipo"] == "bytes":
+            resultado[llave] = bytes.fromhex(info["datos"])
+        else:
+            resultado[llave] = info["datos"]
+    return resultado
+
+def _agregar_membrete_pdf(fig, titulo_documento, empresa, periodo, auditor):
+    """Membrete consistente (logo si existe, marca, título, datos del
+    cliente/periodo/auditor, folio y fecha de emisión) para CUALQUIER PDF
+    que genere la app — así todos los documentos comparten la misma
+    identidad visual en vez de que cada uno arme su encabezado por su lado.
+    Devuelve la posición Y (0-1, coords. de figura) donde ya es seguro que
+    el resto del contenido empiece a escribirse."""
+    if st.session_state.logo_bytes:
+        try:
+            from PIL import Image
+            logo_img = Image.open(io.BytesIO(st.session_state.logo_bytes))
+            eje_logo = fig.add_axes([0.08, 0.90, 0.09, 0.07])
+            eje_logo.imshow(logo_img)
+            eje_logo.axis('off')
+        except Exception:
+            pass
+    plt.text(0.20, 0.945, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=15, weight='bold', color='#0EA5E9')
+    plt.text(0.20, 0.920, titulo_documento, fontsize=11.5, weight='bold')
+    plt.text(0.10, 0.895, "-" * 118, color='gray')
+    folio = f"TFD-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    plt.text(0.10, 0.865, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=10)
+    plt.text(0.10, 0.842, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=10)
+    plt.text(0.10, 0.819, f"Auditor / Responsable: {auditor if auditor else 'No Especificado'}", fontsize=10)
+    plt.text(0.10, 0.796, f"Folio: {folio}   ·   Emitido: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", fontsize=9, color='gray')
+    plt.text(0.10, 0.775, "-" * 118, color='gray')
+    return 0.74
 
 # ==============================================================================
 # 1.5 SEGURIDAD: AUTENTICACIÓN DE USUARIOS
@@ -576,176 +752,7 @@ def validar_rfc(rfc):
     pattern = r'^[A-Z&Ñ]{3,4}[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[A-Z0-9]{3}$'
     return bool(re.match(pattern, str(rfc).upper().strip()))
 
-def registrar_evento(modulo, accion):
-    """Agrega un renglón a la Bitácora de Auditoría con usuario, módulo, acción y hora."""
-    st.session_state.bitacora_eventos.append({
-        "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "Usuario": st.session_state.usuario_actual if st.session_state.usuario_actual else "Sin identificar",
-        "Rol": st.session_state.rol_actual,
-        "Módulo": modulo,
-        "Acción": accion,
-    })
-    st.session_state.ultima_actualizacion_modulos[modulo] = datetime.datetime.now()
 
-def _mostrar_ultima_actualizacion(nombre_modulo):
-    """Muestra 'Última actualización: hace X' arriba de un módulo, si ya se
-    registró alguna acción para él (vía registrar_evento)."""
-    momento = st.session_state.ultima_actualizacion_modulos.get(nombre_modulo)
-    if momento is None:
-        return
-    segundos = (datetime.datetime.now() - momento).total_seconds()
-    if segundos < 60: texto = "hace unos segundos"
-    elif segundos < 3600: texto = f"hace {int(segundos // 60)} min"
-    elif segundos < 86400: texto = f"hace {int(segundos // 3600)} h"
-    else: texto = momento.strftime("el %d/%m/%Y a las %H:%M")
-    st.caption(f":gray[:material/calendar_month: Última actualización: {texto}]")
-
-def _estado_vacio(icono_nombre, titulo, mensaje, color="#38BDF8"):
-    """Tarjeta de 'estado vacío' con ícono + título + mensaje de acción clara,
-    para usarse en vez de un simple st.info() cuando un módulo todavía no
-    tiene datos cargados."""
-    st.markdown(f"""<div class="bl-card" style="text-align:center; padding:36px 24px; border-top:3px solid {color};">
-        <div style="margin-bottom:10px;">{icono(icono_nombre, 36, color)}</div>
-        <div style="font-family:Manrope,sans-serif; font-weight:800; font-size:18px; color:#E6EDF3; margin-bottom:6px;">{titulo}</div>
-        <div style="font-size:13.5px; color:#8B96A5; max-width:480px; margin:0 auto;">{mensaje}</div>
-    </div>""", unsafe_allow_html=True)
-
-# ==============================================================================
-# CONFIRMACIÓN ANTES DE ACCIONES DESTRUCTIVAS
-# ==============================================================================
-# Patrón reutilizable: en vez de que cada botón 'Eliminar'/'Vaciar'/'Cerrar
-# Sesión' ejecute su acción al primer clic, guarda en session_state QUÉ se
-# quiere hacer y abre un modal de confirmación real (st.dialog). Solo si el
-# usuario confirma ahí, se ejecuta la acción.
-if "_accion_pendiente_confirmacion" not in st.session_state:
-    st.session_state._accion_pendiente_confirmacion = None
-
-def solicitar_confirmacion(tipo, mensaje, datos=None):
-    """Llamar esto DENTRO del 'if st.button(...)' de una acción destructiva,
-    en vez de ejecutar la acción directo. Abre el modal de confirmación."""
-    st.session_state._accion_pendiente_confirmacion = {"tipo": tipo, "mensaje": mensaje, "datos": datos or {}}
-    _dialogo_confirmacion()
-
-@st.dialog("Confirmar acción")
-def _dialogo_confirmacion():
-    accion = st.session_state._accion_pendiente_confirmacion
-    if not accion:
-        st.write("No hay ninguna acción pendiente.")
-        return
-    st.warning(f":orange[:material/warning:] {accion['mensaje']}")
-    col_cancelar, col_confirmar = st.columns(2)
-    with col_cancelar:
-        if st.button(":gray[:material/close:] Cancelar", use_container_width=True, key="dialogo_cancelar_btn"):
-            st.session_state._accion_pendiente_confirmacion = None
-            st.rerun()
-    with col_confirmar:
-        if st.button(":red[:material/check_circle:] Sí, continuar", type="primary", use_container_width=True, key="dialogo_confirmar_btn"):
-            _ejecutar_accion_confirmada(accion["tipo"], accion["datos"])
-            st.session_state._accion_pendiente_confirmacion = None
-            st.rerun()
-
-def _ejecutar_accion_confirmada(tipo, datos):
-    """Lógica real de cada acción destructiva — solo se ejecuta después de
-    que el usuario confirma explícitamente en el modal."""
-    if tipo == "cerrar_sesion":
-        st.session_state.bitacora_eventos.append({
-            "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Usuario": st.session_state.usuario_autenticado, "Rol": st.session_state.rol_actual,
-            "Módulo": "Seguridad", "Acción": "Cerró sesión",
-        })
-        _eventos_previos = st.session_state.bitacora_eventos
-        for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
-        st.session_state.bitacora_eventos = _eventos_previos
-        for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
-            st.session_state.pop(llave_editor, None)
-        st.session_state.sesion_autenticada = False
-        st.session_state.usuario_autenticado = None
-
-    elif tipo == "vaciar_bitacora":
-        st.session_state.bitacora_eventos = []
-
-    elif tipo == "eliminar_usuario":
-        nombre_u = datos["nombre"]
-        if nombre_u in st.session_state.usuarios_sistema:
-            del st.session_state.usuarios_sistema[nombre_u]
-            registrar_evento("Gestión de Usuarios", f"Eliminó al usuario '{nombre_u}'")
-
-    elif tipo == "eliminar_snapshot":
-        nombre_snap = datos["nombre"]
-        if nombre_snap in st.session_state.auditorias_guardadas:
-            del st.session_state.auditorias_guardadas[nombre_snap]
-
-def _serializar_estado(diccionario):
-    """Convierte un dict de variables de sesión (incluyendo DataFrames y bytes)
-    a una forma 100% serializable en JSON. Se usa tanto para el respaldo
-    manual (.json descargable) como para las auditorías guardadas en memoria
-    (multiempresa), para no duplicar la lógica de conversión."""
-    resultado = {}
-    for llave, valor in diccionario.items():
-        if isinstance(valor, pd.DataFrame):
-            resultado[llave] = {"tipo": "dataframe", "datos": _dataframe_a_json_seguro(valor)}
-        elif llave == 'logo_bytes' and valor is not None:
-            resultado[llave] = {"tipo": "bytes", "datos": valor.hex()}
-        else:
-            resultado[llave] = {"tipo": "nativo", "datos": valor}
-    return resultado
-
-def _dataframe_a_json_seguro(df):
-    """to_json() de pandas convierte objetos date/datetime SUELTOS (columnas
-    dtype='object' con valores datetime.date, como nuestra '_Fecha_Norm') en
-    números epoch en vez de fechas legibles, y al restaurar quedan como
-    enteros irreconocibles — rompiendo tanto la vista como cualquier
-    comparación de fechas posterior (ej. el 'recordar' la clasificación por
-    departamento). Por eso convertimos esas columnas a texto ISO ANTES de
-    serializar, así el viaje por JSON es transparente."""
-    df_seguro = df.copy()
-    for columna in df_seguro.columns:
-        if df_seguro[columna].dtype == "object":
-            contiene_fechas = df_seguro[columna].apply(lambda v: isinstance(v, (datetime.date, datetime.datetime))).any()
-            if contiene_fechas:
-                df_seguro[columna] = df_seguro[columna].apply(
-                    lambda v: v.isoformat() if isinstance(v, (datetime.date, datetime.datetime)) else v
-                )
-    return df_seguro.to_json(orient='split')
-
-def _deserializar_estado(paquete):
-    """Inverso de _serializar_estado."""
-    resultado = {}
-    for llave, info in paquete.items():
-        if info["tipo"] == "dataframe":
-            resultado[llave] = pd.read_json(io.StringIO(info["datos"]), orient='split')
-        elif info["tipo"] == "bytes":
-            resultado[llave] = bytes.fromhex(info["datos"])
-        else:
-            resultado[llave] = info["datos"]
-    return resultado
-
-def _agregar_membrete_pdf(fig, titulo_documento, empresa, periodo, auditor):
-    """Membrete consistente (logo si existe, marca, título, datos del
-    cliente/periodo/auditor, folio y fecha de emisión) para CUALQUIER PDF
-    que genere la app — así todos los documentos comparten la misma
-    identidad visual en vez de que cada uno arme su encabezado por su lado.
-    Devuelve la posición Y (0-1, coords. de figura) donde ya es seguro que
-    el resto del contenido empiece a escribirse."""
-    if st.session_state.logo_bytes:
-        try:
-            from PIL import Image
-            logo_img = Image.open(io.BytesIO(st.session_state.logo_bytes))
-            eje_logo = fig.add_axes([0.08, 0.90, 0.09, 0.07])
-            eje_logo.imshow(logo_img)
-            eje_logo.axis('off')
-        except Exception:
-            pass
-    plt.text(0.20, 0.945, "TAXFLOW-DIAMOND FINANCIAL SUITE", fontsize=15, weight='bold', color='#0EA5E9')
-    plt.text(0.20, 0.920, titulo_documento, fontsize=11.5, weight='bold')
-    plt.text(0.10, 0.895, "-" * 118, color='gray')
-    folio = f"TFD-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    plt.text(0.10, 0.865, f"Razón Social del Cliente: {empresa if empresa else 'No Especificada'}", fontsize=10)
-    plt.text(0.10, 0.842, f"Periodo Fiscal Auditado: {periodo if periodo else 'No Especificado'}", fontsize=10)
-    plt.text(0.10, 0.819, f"Auditor / Responsable: {auditor if auditor else 'No Especificado'}", fontsize=10)
-    plt.text(0.10, 0.796, f"Folio: {folio}   ·   Emitido: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", fontsize=9, color='gray')
-    plt.text(0.10, 0.775, "-" * 118, color='gray')
-    return 0.74
 
 def generar_dictamen_pdf(empresa, periodo, auditor, conciliado, banco_p, aux_p):
     fig, ax = plt.subplots(figsize=(8.5, 11))
