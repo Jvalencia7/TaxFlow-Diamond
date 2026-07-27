@@ -263,6 +263,7 @@ variables_sesion = {
     'sat_resultados_validacion': None, 'sat_validar_uploader_version': 0,
     'df_facturas_pagadas': None, 'cp_cargados': False, 'cp_ejecutado': False, 'cp_resultados': None,
     'cp_xml_uploader_version': 0, 'cp_tolerancia_importes': 1.0,
+    'prodigia_resultados': None, 'prodigia_solicitudes_uploader_version': 0,
     'rf_datos': {},
 }
 
@@ -373,6 +374,13 @@ def _ejecutar_accion_confirmada(tipo, datos):
         if nombre_snap in st.session_state.auditorias_guardadas:
             del st.session_state.auditorias_guardadas[nombre_snap]
 
+    elif tipo == "borrar_periodo_turso":
+        try:
+            _borrar_periodo_turso(datos["conn"], datos["periodo_id"])
+            registrar_evento("Base de Datos Turso", f"Borró el cierre '{datos['periodo_id']}' de la base de datos")
+        except Exception as e:
+            st.session_state["_turso_error_borrar"] = str(e)
+
 def _serializar_estado(diccionario):
     """Convierte un dict de variables de sesión (incluyendo DataFrames y bytes)
     a una forma 100% serializable en JSON. Se usa tanto para el respaldo
@@ -417,6 +425,80 @@ def _deserializar_estado(paquete):
         else:
             resultado[llave] = info["datos"]
     return resultado
+
+# ==============================================================================
+# BASE DE DATOS EN LA NUBE (TURSO) — respaldo persistente de tus avances por
+# periodo contable, ADEMÁS del respaldo .JSON descargable (no lo reemplaza).
+# ==============================================================================
+# Patrones de nombre de llave que JAMÁS deben llegar a la base de datos, como
+# capa de seguridad EXTRA. Esto es redundante a propósito: la firma
+# electrónica, el CSD y sus contraseñas (Descarga SAT, Prodigia) nunca viven
+# en 'variables_sesion' desde el diseño de esos módulos — se leen del archivo
+# subido, se usan en memoria, y se descartan sin guardarse en session_state.
+# Este filtro es un segundo candado por si algún día alguien agrega por error
+# una llave sensible a variables_sesion.
+_PATRONES_SENSIBLES_DB = ("cer", "key", "pass", "firma", "sello", "csd", "cert", "pfx", "pkcs")
+
+def _filtrar_datos_sensibles_para_db(diccionario):
+    limpio = {}
+    for llave, valor in diccionario.items():
+        llave_norm = llave.lower()
+        if any(patron in llave_norm for patron in _PATRONES_SENSIBLES_DB):
+            continue
+        limpio[llave] = valor
+    return limpio
+
+@st.cache_resource(show_spinner=False)
+def _conectar_turso():
+    """Conecta con la base de datos Turso usando credenciales de Streamlit
+    Secrets (TURSO_DATABASE_URL, TURSO_AUTH_TOKEN) — nunca se escriben en la
+    app. Regresa None si no están configuradas o si falla la conexión, en vez
+    de tronar el resto de la aplicación."""
+    try:
+        url = st.secrets["TURSO_DATABASE_URL"]
+        token = st.secrets["TURSO_AUTH_TOKEN"]
+    except Exception:
+        return None
+    try:
+        import libsql
+        conn = libsql.connect(database=url, auth_token=token)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS taxflow_cierres (
+                periodo_id TEXT PRIMARY KEY,
+                empresa TEXT,
+                periodo TEXT,
+                datos_json TEXT NOT NULL,
+                actualizado_en TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        return conn
+    except Exception:
+        return None
+
+def _guardar_avance_turso(conn, periodo_id, empresa, periodo):
+    datos = {llave: st.session_state[llave] for llave in variables_sesion.keys()}
+    datos = _filtrar_datos_sensibles_para_db(datos)
+    datos_json = json.dumps(_serializar_estado(datos))
+    conn.execute(
+        "INSERT OR REPLACE INTO taxflow_cierres (periodo_id, empresa, periodo, datos_json, actualizado_en) VALUES (?, ?, ?, ?, ?)",
+        (periodo_id, empresa, periodo, datos_json, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+
+def _listar_periodos_turso(conn):
+    filas = conn.execute("SELECT periodo_id, empresa, periodo, actualizado_en FROM taxflow_cierres ORDER BY actualizado_en DESC").fetchall()
+    return pd.DataFrame(filas, columns=["ID", "Empresa", "Periodo", "Última Actualización"])
+
+def _cargar_avance_turso(conn, periodo_id):
+    fila = conn.execute("SELECT datos_json FROM taxflow_cierres WHERE periodo_id = ?", (periodo_id,)).fetchone()
+    if fila is None:
+        return None
+    return _deserializar_estado(json.loads(fila[0]))
+
+def _borrar_periodo_turso(conn, periodo_id):
+    conn.execute("DELETE FROM taxflow_cierres WHERE periodo_id = ?", (periodo_id,))
+    conn.commit()
 
 def _agregar_membrete_pdf(fig, titulo_documento, empresa, periodo, auditor):
     """Membrete consistente (logo si existe, marca, título, datos del
@@ -2120,6 +2202,81 @@ def render_bitacora():
     else:
         _estado_vacio("book", "Bitácora vacía por ahora", "Cada vez que ejecutes una conciliación, cambies un estado de aprobación o gestiones un usuario, aparecerá aquí automáticamente.", color="#FBBF24")
 
+    # ==============================================================================
+    # BASE DE DATOS EN LA NUBE (TURSO)
+    # ==============================================================================
+    st.markdown("---")
+    st.markdown(f'<div class="section-header">{icono("globe")} Base de Datos en la Nube (Turso)</div>', unsafe_allow_html=True)
+    st.caption("Guarda tus avances de cierre contable en una base de datos persistente — así no dependes solo del respaldo .JSON manual. El respaldo .JSON sigue disponible arriba, esto es adicional, no lo reemplaza.")
+    st.warning(":orange[:material/warning:] Tu firma electrónica (e.firma) y tu sello digital (CSD) **nunca** se guardan aquí, bajo ninguna circunstancia — ni siquiera si algún módulo los pidiera prestados temporalmente. Solo se guarda el avance de tus conciliaciones, configuración y bitácora.")
+
+    if st.session_state.get("_turso_error_borrar"):
+        st.error(f":red[:material/block:] No se pudo borrar el cierre. Detalle: {st.session_state.pop('_turso_error_borrar')}")
+
+    conn_turso = _conectar_turso()
+    if conn_turso is None:
+        st.info(
+            ":blue[:material/info:] Aún no está conectada. Para activarla, agrega `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN` en "
+            "**Streamlit Secrets** de esta app (nunca se escriben aquí en la interfaz, por seguridad) — puedes obtenerlos desde tu cuenta de Turso "
+            "(`turso db show <tu-base> --url` y `turso db tokens create <tu-base>`)."
+        )
+    else:
+        st.success(":green[:material/check_circle:] Conectada correctamente.")
+
+        nombre_periodo_actual = f"{st.session_state.empresa or 'Sin empresa'} — {st.session_state.periodo or 'Sin periodo'}"
+        col_g1, col_g2 = st.columns([2, 1])
+        with col_g1:
+            st.text_input("Identificador de este cierre:", value=nombre_periodo_actual, key="turso_id_periodo_actual", disabled=True)
+        with col_g2:
+            st.write("")
+            if st.button(":blue[:material/save:] Guardar avance actual", use_container_width=True, key="turso_guardar_btn"):
+                try:
+                    _guardar_avance_turso(conn_turso, nombre_periodo_actual, st.session_state.empresa, st.session_state.periodo)
+                    registrar_evento("Base de Datos Turso", f"Guardó el avance del cierre '{nombre_periodo_actual}'")
+                    st.success(f"Avance de '{nombre_periodo_actual}' guardado.")
+                except Exception as e:
+                    st.error(f":red[:material/block:] No se pudo guardar. Detalle: {e}")
+
+        try:
+            df_periodos_turso = _listar_periodos_turso(conn_turso)
+        except Exception as e:
+            df_periodos_turso = pd.DataFrame()
+            st.error(f":red[:material/block:] No se pudo leer la lista de cierres guardados. Detalle: {e}")
+
+        if not df_periodos_turso.empty:
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            st.dataframe(df_periodos_turso, use_container_width=True)
+
+            periodo_elegido_turso = st.selectbox("Cierre contable guardado:", df_periodos_turso["ID"], key="turso_selector_periodo")
+            col_g3, col_g4 = st.columns(2)
+            with col_g3:
+                if st.button(":blue[:material/folder_open:] Cargar este cierre", use_container_width=True, key="turso_cargar_btn"):
+                    try:
+                        datos_cargados = _cargar_avance_turso(conn_turso, periodo_elegido_turso)
+                        if datos_cargados is None:
+                            st.error("No se encontró ese cierre (¿se borró mientras tanto?).")
+                        else:
+                            for llave, valor in datos_cargados.items():
+                                st.session_state[llave] = valor
+                            for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
+                                st.session_state.pop(llave_editor, None)
+                            registrar_evento("Base de Datos Turso", f"Cargó el cierre '{periodo_elegido_turso}'")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f":red[:material/block:] No se pudo cargar. Detalle: {e}")
+            with col_g4:
+                # El botón que pediste específicamente: borrar toda la información
+                # de un periodo contable, para que la base no se llene y puedas
+                # empezar un cierre nuevo desde cero.
+                if st.button(":blue[:material/delete:] Borrar este cierre de la base de datos", use_container_width=True, key="turso_borrar_btn"):
+                    solicitar_confirmacion(
+                        "borrar_periodo_turso",
+                        f"¿Seguro que quieres borrar TODA la información guardada del cierre '{periodo_elegido_turso}' de la base de datos? Esta acción no se puede deshacer.",
+                        {"periodo_id": periodo_elegido_turso, "conn": conn_turso},
+                    )
+        else:
+            st.caption("Aún no has guardado ningún cierre en la base de datos.")
+
 def render_gestion_usuarios():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("users")} Gestión de Usuarios</div>', unsafe_allow_html=True)
@@ -2496,6 +2653,76 @@ def _extraer_pagos_de_complemento(xml_bytes, nombre_archivo):
     if not pagos_extraidos:
         return [], "El Complemento no trae ningún <DoctoRelacionado> (sin facturas asociadas)."
     return pagos_extraidos, None
+
+def _normalizar_respuesta_cancelacion(texto):
+    """Acepta cualquier variante razonable que el usuario haya escrito en su
+    Excel ('Aceptar', 'Aceptación', 'Accept', 'Rechazar', 'Rechazo'...) y la
+    reduce a los dos únicos valores que Prodigia/SAT esperan."""
+    t = str(texto).strip().lower()
+    t = (t.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u"))
+    if t.startswith("acept"):
+        return "Aceptacion"
+    if t.startswith("rechaz") or t.startswith("reject"):
+        return "Rechazo"
+    return None
+
+def _responder_cancelacion_prodigia(contrato, usuario, passwd, rfc_receptor, lista_uuid_respuesta, cert_b64, key_b64, key_pass, usar_cert_default):
+    """Llama al método SOAP oficial de Prodigia 'responderSolicitudCancelacionConOpciones'
+    (https://docs.prodigia.com.mx/api-timbrado-xml.html#resp_sol_canc) para
+    aceptar/rechazar en lote las solicitudes de cancelación recibidas de
+    proveedores. lista_uuid_respuesta: lista de tuplas (uuid, 'Aceptacion'|'Rechazo')."""
+    import requests
+
+    url = "https://timbrado.pade.mx/servicio/Timbrado4.0?wsdl"
+
+    arreglo_xml = "".join(f"<arregloUUID>{uuid_val}|{respuesta}</arregloUUID>" for uuid_val, respuesta in lista_uuid_respuesta)
+    if usar_cert_default:
+        bloque_cert = "<opciones>CERT_DEFAULT</opciones>"
+    else:
+        bloque_cert = f"<cert>{cert_b64}</cert><key>{key_b64}</key><keyPass>{key_pass}</keyPass>"
+
+    sobre = (
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tim="timbrado.ws.pade.mx">'
+        '<soapenv:Header/><soapenv:Body><tim:responderSolicitudCancelacionConOpciones>'
+        f'<contrato>{contrato}</contrato><usuario>{usuario}</usuario><passwd>{passwd}</passwd>'
+        f'<rfcReceptor>{rfc_receptor}</rfcReceptor>'
+        f'{arreglo_xml}{bloque_cert}'
+        '</tim:responderSolicitudCancelacionConOpciones></soapenv:Body></soapenv:Envelope>'
+    )
+    headers = {"Content-Type": "text/xml; charset=utf-8"}
+    respuesta_http = requests.post(url, data=sobre.encode("utf-8"), headers=headers, timeout=60)
+    respuesta_http.raise_for_status()
+
+    raiz_soap = ET.fromstring(respuesta_http.content)
+    nodo_return = None
+    for elem in raiz_soap.iter():
+        if elem.tag.split("}")[-1] == "return":
+            nodo_return = elem
+            break
+    if nodo_return is None or not nodo_return.text:
+        raise ValueError("La respuesta de Prodigia no tuvo el formato esperado (sin nodo <return>).")
+
+    raiz_interna = ET.fromstring(nodo_return.text)
+
+    def _texto_interno(nombre_local):
+        el = raiz_interna.find(nombre_local)
+        return el.text if el is not None and el.text else ""
+
+    resumen = {
+        "procesoOk": _texto_interno("procesoOk"),
+        "codigo": _texto_interno("codigo"),
+        "codigoEstatus": _texto_interno("codigoEstatus"),
+        "mensaje": _texto_interno("mensaje"),
+        "fecha": _texto_interno("fecha"),
+    }
+    folios = []
+    for nodo_folio in raiz_interna.findall("Folios"):
+        folios.append({
+            "UUID": (nodo_folio.findtext("UUID") or "").strip(),
+            "Respuesta_Enviada": nodo_folio.get("Respuesta", ""),
+            "Estatus_SAT": (nodo_folio.findtext("EstatusUUID") or "").strip(),
+        })
+    return resumen, folios
 
 def render_descarga_sat():
     st.write("")
@@ -3266,6 +3493,133 @@ def render_acerca_de():
 
     st.markdown("<div style='text-align:center; color:#5B6472; font-size:12px; margin-top:24px;'>TaxFlow-Diamond · v2.4 · Desarrollado por Jose Valencia</div>", unsafe_allow_html=True)
 
+def render_prodigia_cancelaciones():
+    st.write("")
+    st.markdown(f'<div class="section-header">{icono("check")} Aceptación/Rechazo Masivo de Cancelaciones (Prodigia)</div>', unsafe_allow_html=True)
+    _mostrar_ultima_actualizacion("Prodigia Aceptación/Rechazo")
+    st.caption("Conecta con tu PAC Prodigia para responder en lote las solicitudes de cancelación de CFDI que te enviaron tus proveedores. Sube un archivo con el UUID de cada solicitud y tu respuesta (Aceptación o Rechazo), y ejecuta todo con un clic.")
+    st.warning(":orange[:material/warning:] Tus credenciales de Prodigia y tu llave privada (si la subes) se usan solo en memoria durante esta acción — nunca se guardan en disco, ni se registran en la Bitácora ni en el respaldo JSON.")
+    st.caption(":blue[:material/info:] Este servicio usa la API oficial documentada por Prodigia (método `responderSolicitudCancelacionConOpciones`). Si tienes duda de si tus datos son correctos antes de ejecutar en producción, pídele a Prodigia el modo de pruebas de tu contrato.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        contrato_prodigia = st.text_input("Contrato Prodigia:", key="prodigia_contrato")
+        usuario_prodigia = st.text_input("Usuario del servicio:", key="prodigia_usuario")
+    with col2:
+        rfc_receptor_prodigia = st.text_input("RFC Receptor (tu RFC):", key="prodigia_rfc").strip().upper()
+        password_prodigia = st.text_input("Contraseña del servicio:", type="password", key="prodigia_passwd")
+
+    usar_csd_guardado = st.checkbox("Ya tengo mi CSD guardado en la plataforma Pade (usar CERT_DEFAULT, no subir .cer/.key)", value=True, key="prodigia_usar_default")
+    cert_b64_prodigia = key_b64_prodigia = ""
+    key_pass_prodigia = ""
+    if not usar_csd_guardado:
+        col3, col4, col5 = st.columns(3)
+        with col3:
+            archivo_cer_prodigia = st.file_uploader("Certificado (.cer):", type=["cer"], key="prodigia_cer")
+        with col4:
+            archivo_key_prodigia = st.file_uploader("Llave privada (.key):", type=["key"], key="prodigia_key")
+        with col5:
+            key_pass_prodigia = st.text_input("Contraseña de la llave privada:", type="password", key="prodigia_keypass")
+        if archivo_cer_prodigia: cert_b64_prodigia = base64.b64encode(archivo_cer_prodigia.getvalue()).decode("ascii")
+        if archivo_key_prodigia: key_b64_prodigia = base64.b64encode(archivo_key_prodigia.getvalue()).decode("ascii")
+
+    archivo_solicitudes = st.file_uploader(
+        "Relación de solicitudes (Excel/CSV) con el UUID y tu respuesta para cada una:", type=["csv", "xlsx"],
+        key=f"prodigia_solicitudes_uploader_{st.session_state.prodigia_solicitudes_uploader_version}",
+    )
+
+    if st.button(":gray[:material/delete:] Limpiar Todo", key="prodigia_limpiar_btn"):
+        st.session_state.prodigia_resultados = None
+        st.session_state.prodigia_solicitudes_uploader_version += 1
+        st.rerun()
+
+    if archivo_solicitudes is not None:
+        df_sol = leer_archivo_contable(archivo_solicitudes)
+        col6, col7 = st.columns(2)
+        with col6: col_uuid_sol = st.selectbox("Columna con el UUID:", df_sol.columns, key="prodigia_col_uuid")
+        with col7: col_respuesta_sol = st.selectbox("Columna con la respuesta (Aceptación/Rechazo):", df_sol.columns, key="prodigia_col_respuesta")
+
+        if col_uuid_sol == col_respuesta_sol:
+            st.warning(":orange[:material/warning:] Elegiste la **misma columna** para UUID y para Respuesta — probablemente no es lo que quieres. Revisa el selector antes de ejecutar.")
+
+        # Se arma con nombres de columna propios (no reutilizando los del
+        # archivo) para que nunca truene aunque el usuario elija la misma
+        # columna dos veces — evita duplicar nombres de columna en pandas.
+        df_vista = pd.DataFrame({
+            "UUID": df_sol[col_uuid_sol].astype(str),
+            "Respuesta (original)": df_sol[col_respuesta_sol],
+        })
+        df_vista["Respuesta Detectada"] = df_vista["Respuesta (original)"].apply(lambda v: _normalizar_respuesta_cancelacion(v) or "⚠ No reconocida")
+        st.dataframe(df_vista, use_container_width=True)
+
+        n_no_reconocidas = int((df_vista["Respuesta Detectada"] == "⚠ No reconocida").sum())
+        if n_no_reconocidas > 0:
+            st.warning(f":orange[:material/warning:] {n_no_reconocidas} fila(s) tienen una respuesta que no pude interpretar como 'Aceptación' o 'Rechazo' — se omitirán al ejecutar.")
+
+        campos_completos = contrato_prodigia and usuario_prodigia and password_prodigia and rfc_receptor_prodigia and (usar_csd_guardado or (cert_b64_prodigia and key_b64_prodigia))
+        if st.button(":green[:material/play_arrow:] Ejecutar Aceptación/Rechazo Masivo", type="primary", use_container_width=True, key="prodigia_ejecutar_btn", disabled=not campos_completos):
+            lista_uuid_respuesta = [
+                (str(fila[col_uuid_sol]).strip(), _normalizar_respuesta_cancelacion(fila[col_respuesta_sol]))
+                for _, fila in df_sol.iterrows()
+                if _normalizar_respuesta_cancelacion(fila[col_respuesta_sol]) is not None
+            ]
+            if not lista_uuid_respuesta:
+                st.error("No hay ninguna fila con una respuesta válida (Aceptación/Rechazo) para enviar.")
+            else:
+                try:
+                    with st.spinner(f":blue[:material/autorenew:] Enviando {len(lista_uuid_respuesta)} respuesta(s) a Prodigia…"):
+                        resumen, folios = _responder_cancelacion_prodigia(
+                            contrato_prodigia, usuario_prodigia, password_prodigia, rfc_receptor_prodigia,
+                            lista_uuid_respuesta, cert_b64_prodigia, key_b64_prodigia, key_pass_prodigia, usar_csd_guardado,
+                        )
+                    st.session_state.prodigia_resultados = {"resumen": resumen, "folios": pd.DataFrame(folios)}
+                    n_ok = sum(1 for f in folios if f["Estatus_SAT"] in ("1001", "1000"))
+                    registrar_evento("Prodigia Aceptación/Rechazo", f"Respondió {len(folios)} solicitud(es) de cancelación ante Prodigia ({n_ok} procesadas correctamente)")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f":red[:material/block:] No se pudo completar la solicitud ante Prodigia. Detalle: {e}")
+
+    if st.session_state.prodigia_resultados is not None:
+        resumen = st.session_state.prodigia_resultados["resumen"]
+        df_folios = st.session_state.prodigia_resultados["folios"]
+
+        st.markdown("---")
+        if resumen.get("procesoOk") == "true":
+            st.success(f":green[:material/check_circle:] {resumen.get('mensaje', 'Proceso completado.')} (código {resumen.get('codigoEstatus', '—')}, {resumen.get('fecha', '')})")
+        else:
+            st.error(f":red[:material/block:] Prodigia reportó un problema: {resumen.get('mensaje', 'sin detalle')} (código {resumen.get('codigo', '—')})")
+
+        if not df_folios.empty:
+            n_aceptados = int((df_folios["Respuesta_Enviada"] == "Aceptacion").sum())
+            n_rechazados = int((df_folios["Respuesta_Enviada"] == "Rechazo").sum())
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#12B76A;">
+                    <div class="bl-mini-title">Aceptadas</div><div class="bl-mini-value">{n_aceptados}</div>
+                </div>""", unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#EF4444;">
+                    <div class="bl-mini-title">Rechazadas</div><div class="bl-mini-value">{n_rechazados}</div>
+                </div>""", unsafe_allow_html=True)
+            with c3:
+                st.markdown(f"""<div class="bl-mini-card" style="border-top-color:#38BDF8;">
+                    <div class="bl-mini-title">Total Procesadas</div><div class="bl-mini-value">{len(df_folios)}</div>
+                </div>""", unsafe_allow_html=True)
+
+            st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+            def _color_respuesta_prodigia(fila):
+                color = "#12B76A22" if fila["Respuesta_Enviada"] == "Aceptacion" else "#EF444422"
+                return [f"background-color:{color}; color:#E6EDF3"] * len(fila)
+            st.dataframe(df_folios.style.apply(_color_respuesta_prodigia, axis=1), use_container_width=True)
+
+            buffer_prodigia = io.BytesIO()
+            with pd.ExcelWriter(buffer_prodigia, engine='openpyxl') as writer:
+                df_folios.to_excel(writer, sheet_name='Prodigia_Aceptacion_Rechazo', index=False)
+            st.download_button(":blue[:material/download:] Descargar Resultados (.XLSX)", data=buffer_prodigia.getvalue(), file_name="Prodigia_Aceptacion_Rechazo.xlsx", use_container_width=True, key="prodigia_descargar_btn")
+    elif archivo_solicitudes is None:
+        _estado_vacio("check", "Aún no has subido tu relación de solicitudes", "Sube un Excel/CSV con el UUID de cada solicitud de cancelación recibida y tu respuesta (Aceptación o Rechazo) para procesarlas todas de una vez.")
+
 def render_ayuda():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
@@ -3273,6 +3627,7 @@ def render_ayuda():
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("globe")} Descarga Masiva SAT</div>Descarga tus CFDI (Emitidos y/o Recibidos) directo del SAT usando tu e.firma, sin necesidad de entrar al portal manualmente. Requiere la librería <code>cfdiclient</code> instalada en el servidor. Tu contraseña y llave privada nunca se guardan en disco.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("check")} Validar CFDI</div>Sube uno o varios XML y consulta al SAT si siguen vigentes o fueron cancelados — usa el mismo servicio público del código QR, sin necesidad de e.firma.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("cash")} Complementos de Pago</div>Sube tu relación de facturas pagadas del mes y los XML de sus Complementos de Pago (REP) — la app cruza cada factura por UUID contra su complemento y valida Subtotal, IVA, Retenciones y Total, marcando cuáles ya están conciliadas, cuáles no tienen complemento, y cuáles tienen diferencias de importe.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("check")} Aceptación/Rechazo Prodigia</div>Conecta con tu PAC (Prodigia) para responder en lote las solicitudes de cancelación de CFDI enviadas por tus proveedores. Sube un Excel con el UUID de cada solicitud y tu respuesta, y ejecútalo todo con un clic — usa la API oficial de Prodigia, tus credenciales y llave privada nunca se guardan en disco.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("bank")} 2. Módulo Bancario (Bancos vs Auxiliar)</div>Cruce bidimensional por fecha e importe para cuadrar estados de cuenta con Auxiliar.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("document")} 3. XML vs Contabilidad</div>Mapeo inteligente para amarrar facturas electrónicas e identificar CFDI omitidos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("invoice")} 4. Clientes y Proveedores</div>Balanza de saldos globales contra reportes de antigüedad analíticos.</div>', unsafe_allow_html=True)
@@ -3281,6 +3636,7 @@ def render_ayuda():
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("box")} 7. Inventarios</div>Levantamiento físico real de auditoría contra los saldos del Kárdex contable.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("cash")} 8. IVA Flujo</div>Validar que el IVA determinado coincida con el flujo real reflejado en bancos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("gear")} 9. Configuración y Copias JSON</div>Gestión de membretes, tolerancias, fecha límite de cierre y carga/descarga de respaldos de sesión.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="help-card"><div class="help-title">{icono("globe")} Base de Datos en la Nube (Turso)</div>Guarda y recupera tus avances de cierre contable de forma persistente entre sesiones (además del respaldo .JSON, no en su lugar). Un botón te permite borrar por completo un cierre guardado para empezar uno nuevo. Tu firma electrónica y sello digital nunca se guardan aquí. Se activa configurando TURSO_DATABASE_URL y TURSO_AUTH_TOKEN en Streamlit Secrets.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("clipboard")} Centro de Exportación</div>Todos los reportes descargables de la app (PDF y Excel de cada módulo) en un solo lugar, sin tener que entrar módulo por módulo a buscarlos.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("factory")} 10. Activo Fijo</div>Calcula la depreciación esperada en línea recta a partir del kárdex de activos y la compara contra la depreciación acumulada registrada en libros.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="help-card"><div class="help-title">{icono("trending")} 11. Razones Financieras</div>Captura cifras del Balance General y Estado de Resultados para obtener liquidez, apalancamiento, márgenes, ROA y ROE con su gráfica.</div>', unsafe_allow_html=True)
@@ -3304,6 +3660,7 @@ CATEGORIAS = {
         (":blue[:material/cloud_download:]", "Descarga Masiva SAT", render_descarga_sat),
         (":green[:material/check_circle:]", "Validar CFDI", render_validar_cfdi),
         (":green[:material/paid:]", "Complementos de Pago", render_conciliacion_pagos),
+        (":violet[:material/check_circle:]", "Aceptación/Rechazo Prodigia", render_prodigia_cancelaciones),
         (":blue[:material/account_balance:]", "Bancos vs Auxiliar", render_bancos),
         (":yellow[:material/description:]", "XML vs Contabilidad", render_xml),
         (":orange[:material/receipt_long:]", "Clientes y Proveedores", render_saldos),
