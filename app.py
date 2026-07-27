@@ -346,7 +346,10 @@ except Exception:
 _fecha_larga_header = f"{_ahora_header.day} de {_MESES_ES[_ahora_header.month - 1]} de {_ahora_header.year}"
 _hora_header = _ahora_header.strftime("%H:%M")
 
-col_titulo, col_fecha_header = st.columns([3, 1])
+col_logo, col_titulo, col_fecha_header = st.columns([0.6, 2.4, 1])
+with col_logo:
+    if st.session_state.logo_bytes:
+        st.image(st.session_state.logo_bytes, width=64)
 with col_titulo:
     st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
