@@ -346,10 +346,10 @@ except Exception:
 _fecha_larga_header = f"{_ahora_header.day} de {_MESES_ES[_ahora_header.month - 1]} de {_ahora_header.year}"
 _hora_header = _ahora_header.strftime("%H:%M")
 
-col_logo, col_titulo, col_fecha_header = st.columns([0.6, 2.4, 1])
+col_logo, col_titulo, col_fecha_header = st.columns([0.9, 2.1, 1])
 with col_logo:
     if st.session_state.logo_bytes:
-        st.image(st.session_state.logo_bytes, width=64)
+        st.image(st.session_state.logo_bytes, width=110)
 with col_titulo:
     st.markdown(f'<div class="main-title">TaxFlow-Diamond</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">Enterprise Financial & XML Reconciliation Suite</div>', unsafe_allow_html=True)
@@ -419,19 +419,10 @@ with st.sidebar.expander(f":{_color_alertas}[:material/notifications: {_texto_al
 
 st.sidebar.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
 if st.sidebar.button(":gray[:material/lock:] Cerrar Sesión", type="primary", use_container_width=True, key="sidebar_logout_btn"):
-    st.session_state.bitacora_eventos.append({
-        "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "Usuario": st.session_state.usuario_autenticado, "Rol": st.session_state.rol_actual,
-        "Módulo": "Seguridad", "Acción": "Cerró sesión",
-    })
-    _eventos_previos = st.session_state.bitacora_eventos
-    for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
-    st.session_state.bitacora_eventos = _eventos_previos  # conservamos la bitácora aunque se reinicien los datos de trabajo
-    for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
-        st.session_state.pop(llave_editor, None)
-    st.session_state.sesion_autenticada = False
-    st.session_state.usuario_autenticado = None
-    st.rerun()
+    solicitar_confirmacion(
+        "cerrar_sesion",
+        "¿Seguro que quieres cerrar sesión? Esto también reinicia los datos de esta auditoría (bancos, XML, etc.) — descarga tu respaldo .JSON antes si quieres conservarlos.",
+    )
 st.sidebar.caption(":orange[:material/warning:] Cerrar sesión también reinicia los datos de esta auditoría (bancos, XML, etc.) — descarga tu respaldo .JSON antes si quieres conservarlos.")
 
 st.sidebar.markdown("---")
@@ -460,8 +451,7 @@ with st.sidebar.expander(":blue[:material/apartment:] Multiempresa (auditorías 
                 st.rerun()
         with col_ae2:
             if st.button(":blue[:material/delete:] Eliminar", use_container_width=True, key="eliminar_snapshot_btn"):
-                del st.session_state.auditorias_guardadas[auditoria_elegida]
-                st.rerun()
+                solicitar_confirmacion("eliminar_snapshot", f"¿Seguro que quieres eliminar la auditoría guardada '{auditoria_elegida}'? Esta acción no se puede deshacer.", {"nombre": auditoria_elegida})
     else:
         st.caption("Aún no hay auditorías guardadas.")
 
@@ -597,6 +587,71 @@ def _estado_vacio(icono_nombre, titulo, mensaje, color="#38BDF8"):
         <div style="font-family:Manrope,sans-serif; font-weight:800; font-size:18px; color:#E6EDF3; margin-bottom:6px;">{titulo}</div>
         <div style="font-size:13.5px; color:#8B96A5; max-width:480px; margin:0 auto;">{mensaje}</div>
     </div>""", unsafe_allow_html=True)
+
+# ==============================================================================
+# CONFIRMACIÓN ANTES DE ACCIONES DESTRUCTIVAS
+# ==============================================================================
+# Patrón reutilizable: en vez de que cada botón 'Eliminar'/'Vaciar'/'Cerrar
+# Sesión' ejecute su acción al primer clic, guarda en session_state QUÉ se
+# quiere hacer y abre un modal de confirmación real (st.dialog). Solo si el
+# usuario confirma ahí, se ejecuta la acción.
+if "_accion_pendiente_confirmacion" not in st.session_state:
+    st.session_state._accion_pendiente_confirmacion = None
+
+def solicitar_confirmacion(tipo, mensaje, datos=None):
+    """Llamar esto DENTRO del 'if st.button(...)' de una acción destructiva,
+    en vez de ejecutar la acción directo. Abre el modal de confirmación."""
+    st.session_state._accion_pendiente_confirmacion = {"tipo": tipo, "mensaje": mensaje, "datos": datos or {}}
+    _dialogo_confirmacion()
+
+@st.dialog("Confirmar acción")
+def _dialogo_confirmacion():
+    accion = st.session_state._accion_pendiente_confirmacion
+    if not accion:
+        st.write("No hay ninguna acción pendiente.")
+        return
+    st.warning(f":orange[:material/warning:] {accion['mensaje']}")
+    col_cancelar, col_confirmar = st.columns(2)
+    with col_cancelar:
+        if st.button(":gray[:material/close:] Cancelar", use_container_width=True, key="dialogo_cancelar_btn"):
+            st.session_state._accion_pendiente_confirmacion = None
+            st.rerun()
+    with col_confirmar:
+        if st.button(":red[:material/check_circle:] Sí, continuar", type="primary", use_container_width=True, key="dialogo_confirmar_btn"):
+            _ejecutar_accion_confirmada(accion["tipo"], accion["datos"])
+            st.session_state._accion_pendiente_confirmacion = None
+            st.rerun()
+
+def _ejecutar_accion_confirmada(tipo, datos):
+    """Lógica real de cada acción destructiva — solo se ejecuta después de
+    que el usuario confirma explícitamente en el modal."""
+    if tipo == "cerrar_sesion":
+        st.session_state.bitacora_eventos.append({
+            "Fecha_Hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Usuario": st.session_state.usuario_autenticado, "Rol": st.session_state.rol_actual,
+            "Módulo": "Seguridad", "Acción": "Cerró sesión",
+        })
+        _eventos_previos = st.session_state.bitacora_eventos
+        for llave in variables_sesion.keys(): st.session_state[llave] = variables_sesion[llave]
+        st.session_state.bitacora_eventos = _eventos_previos
+        for llave_editor in ["editor_clasificacion_bancos", "sat_editor", "pbc_editor"]:
+            st.session_state.pop(llave_editor, None)
+        st.session_state.sesion_autenticada = False
+        st.session_state.usuario_autenticado = None
+
+    elif tipo == "vaciar_bitacora":
+        st.session_state.bitacora_eventos = []
+
+    elif tipo == "eliminar_usuario":
+        nombre_u = datos["nombre"]
+        if nombre_u in st.session_state.usuarios_sistema:
+            del st.session_state.usuarios_sistema[nombre_u]
+            registrar_evento("Gestión de Usuarios", f"Eliminó al usuario '{nombre_u}'")
+
+    elif tipo == "eliminar_snapshot":
+        nombre_snap = datos["nombre"]
+        if nombre_snap in st.session_state.auditorias_guardadas:
+            del st.session_state.auditorias_guardadas[nombre_snap]
 
 def _serializar_estado(diccionario):
     """Convierte un dict de variables de sesión (incluyendo DataFrames y bytes)
@@ -2020,8 +2075,7 @@ def render_bitacora():
             df_bitacora.to_excel(writer, sheet_name='Bitacora', index=False)
         st.download_button(label=":blue[:material/download:] Descargar Bitácora (.XLSX)", data=buffer_bit.getvalue(), file_name="Bitacora_Auditoria.xlsx", use_container_width=True)
         if st.button(":blue[:material/delete:] Vaciar Bitácora", key="vaciar_bitacora"):
-            st.session_state.bitacora_eventos = []
-            st.rerun()
+            solicitar_confirmacion("vaciar_bitacora", "¿Seguro que quieres vaciar toda la Bitácora de Auditoría? Esta acción no se puede deshacer.")
     else:
         _estado_vacio("book", "Bitácora vacía por ahora", "Cada vez que ejecutes una conciliación, cambies un estado de aprobación o gestiones un usuario, aparecerá aquí automáticamente.", color="#FBBF24")
 
@@ -2117,9 +2171,7 @@ def render_gestion_usuarios():
                     st.caption("Único admin")
             with cu5:
                 if st.button(":blue[:material/delete:]", key=f"eliminar_usuario_{nombre_u}", help="Eliminar", disabled=(nombre_u == st.session_state.usuario_autenticado or es_unico_admin)):
-                    del st.session_state.usuarios_sistema[nombre_u]
-                    registrar_evento("Gestión de Usuarios", f"Eliminó al usuario '{nombre_u}'")
-                    st.rerun()
+                    solicitar_confirmacion("eliminar_usuario", f"¿Seguro que quieres eliminar al usuario '{nombre_u}'? Esta acción no se puede deshacer.", {"nombre": nombre_u})
             st.markdown("---")
 
 ESTADOS_SAT = {0: "Token inválido", 1: "Aceptada", 2: "En proceso", 3: "Terminada", 4: "Error", 5: "Rechazada", 6: "Vencida"}
@@ -2152,10 +2204,13 @@ def _con_reintentos_sat(fn, log_fn, descripcion, intentos=4, espera_base=8):
                 time.sleep(espera)
     raise ultimo_error
 
-def _procesar_solicitud_sat(fiel, rfc, fecha_ini, fecha_fin, direccion, tipo_solicitud, tipos_comprobante, progreso_ctx, log_fn, progreso_fn, clases_sat):
+def _procesar_solicitud_sat(fiel, rfc, fecha_ini, fecha_fin, direccion, tipo_solicitud, tipos_comprobante, progreso_ctx, log_fn, progreso_fn, clases_sat, estado_comprobante=None):
     """direccion: 'emitidos' o 'recibidos'. Hace una solicitud separada por cada
     tipo de comprobante (el SAT solo acepta un tipo por solicitud) y por cada
-    ventana de fechas. Devuelve lista de (nombre_paquete, bytes_zip)."""
+    ventana de fechas. estado_comprobante: None (todos), 'Vigente' o
+    'Cancelado' — filtra directamente en la solicitud al SAT, para no tener
+    que descargar de más y luego descartar. Devuelve lista de
+    (nombre_paquete, bytes_zip)."""
     Autenticacion, DescargaMasiva, SolicitaDescargaEmitidos, SolicitaDescargaRecibidos, VerificaSolicitudDescarga = clases_sat
     auth = Autenticacion(fiel)
     solicitante = SolicitaDescargaEmitidos(fiel) if direccion == "emitidos" else SolicitaDescargaRecibidos(fiel)
@@ -2180,7 +2235,8 @@ def _procesar_solicitud_sat(fiel, rfc, fecha_ini, fecha_fin, direccion, tipo_sol
                 kwargs["rfc_emisor"] = rfc
             else:
                 kwargs["rfc_receptor"] = rfc
-                kwargs["estado_comprobante"] = "Vigente"
+            if estado_comprobante:
+                kwargs["estado_comprobante"] = estado_comprobante
             if tipo_c:
                 kwargs["tipo_comprobante"] = tipo_c
 
@@ -2442,7 +2498,16 @@ def render_descarga_sat():
     with col4: fecha_fin_sat = st.date_input("Fecha final:", key="sat_fecha_fin", format="DD/MM/YYYY")
 
     direcciones_sat = st.multiselect("Dirección:", ["emitidos", "recibidos"], default=["emitidos", "recibidos"], key="sat_direcciones")
-    tipo_solicitud_sat = st.radio("Tipo de solicitud:", ["CFDI", "Metadata"], horizontal=True, key="sat_tipo_solicitud")
+    col_tipo_sol, col_estado_sat = st.columns(2)
+    with col_tipo_sol:
+        tipo_solicitud_sat = st.radio("Tipo de solicitud:", ["CFDI", "Metadata"], horizontal=True, key="sat_tipo_solicitud")
+    with col_estado_sat:
+        estado_comprobante_sat = st.radio("Estado del comprobante:", ["Todos", "Vigentes", "Cancelados"], horizontal=True, key="sat_estado_comprobante")
+    _mapa_estado_sat = {"Todos": None, "Vigentes": "Vigente", "Cancelados": "Cancelado"}
+    estado_comprobante_valor = _mapa_estado_sat[estado_comprobante_sat]
+
+    if "recibidos" in direcciones_sat and tipo_solicitud_sat == "CFDI" and estado_comprobante_sat in ("Cancelados", "Todos"):
+        st.caption(":orange[:material/warning:] El Web Service del SAT **no entrega el XML completo de comprobantes Recibidos cancelados** — solo el Metadata (resumen). Para 'Recibidos', el filtro de estado solo tiene efecto real si pides **Metadata**; en 'CFDI' probablemente no recibas nada para los cancelados (sí funcionará normal para 'Emitidos').")
 
     tipos_por_direccion = {}
     if "emitidos" in direcciones_sat:
@@ -2501,7 +2566,7 @@ def render_descarga_sat():
                 todos_los_paquetes = []
                 for direccion in direcciones_sat:
                     tipos = tipos_por_direccion.get(direccion, [])
-                    paquetes = _procesar_solicitud_sat(fiel, rfc_sat, fecha_ini_sat, fecha_fin_sat, direccion, tipo_solicitud_sat, tipos, progreso_ctx, _log_sat, _progreso_sat, clases_sat)
+                    paquetes = _procesar_solicitud_sat(fiel, rfc_sat, fecha_ini_sat, fecha_fin_sat, direccion, tipo_solicitud_sat, tipos, progreso_ctx, _log_sat, _progreso_sat, clases_sat, estado_comprobante_valor)
                     todos_los_paquetes.extend(paquetes)
 
                 cer_bytes = key_bytes = password_sat = None  # nunca dejar la llave/contraseña en memoria más de lo necesario
@@ -2535,9 +2600,10 @@ def render_descarga_sat():
                         "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"), "RFC": rfc_sat,
                         "Periodo": f"{fecha_ini_sat.strftime('%d/%m/%y')} – {fecha_fin_sat.strftime('%d/%m/%y')}",
                         "Dirección": " + ".join(d.capitalize() for d in direcciones_sat),
+                        "Filtro CFDI": estado_comprobante_sat,
                         "CFDIs": total_xml, "Estado": "Completado",
                     })
-                    registrar_evento("Descarga SAT", f"Descargó {total_xml} XML del SAT para {rfc_sat} ({fecha_ini_sat} a {fecha_fin_sat})")
+                    registrar_evento("Descarga SAT", f"Descargó {total_xml} XML del SAT para {rfc_sat} ({fecha_ini_sat} a {fecha_fin_sat}, filtro: {estado_comprobante_sat})")
                     st.success(f":green[:material/check_circle:] {total_xml} XML descargados y consolidados.")
             except Exception as e:
                 _log_sat(f"✗ Error: {e}")
@@ -3116,6 +3182,49 @@ def render_conciliacion_pagos():
     elif archivo_facturas is None:
         _estado_vacio("cash", "Aún no has subido tu relación de facturas pagadas", "Sube el Excel/CSV con tus facturas pagadas del mes y los XML de sus Complementos de Pago para que la app haga el cruce automáticamente.")
 
+def render_acerca_de():
+    st.write("")
+    st.markdown(f'<div class="section-header">{icono("help")} Acerca de TaxFlow-Diamond</div>', unsafe_allow_html=True)
+
+    col_logo_acerca, col_info_acerca = st.columns([1, 3])
+    with col_logo_acerca:
+        if st.session_state.logo_bytes:
+            st.image(st.session_state.logo_bytes, width=120)
+    with col_info_acerca:
+        st.markdown("""<div style="font-family:Manrope,sans-serif; font-weight:800; font-size:22px; color:#E6EDF3;">TaxFlow-Diamond</div>
+        <div style="color:#8B96A5; font-size:14px; margin-top:2px;">Enterprise Financial &amp; XML Reconciliation Suite</div>
+        <div style="color:#38BDF8; font-weight:700; margin-top:10px; font-size:15px;">Versión 2.4</div>
+        <div style="color:#8B96A5; font-size:13px; margin-top:2px;">Desarrollado por Jose Valencia</div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown(f'<div class="section-header">{icono("history")} Historial de Versiones (resumen)</div>', unsafe_allow_html=True)
+    _hitos_version = [
+        ("v2.4", "Módulo de Complementos de Pago (REP), Descarga Masiva SAT, Validar CFDI, Centro de Exportación y Confirmación en acciones destructivas."),
+        ("v2.3", "Rediseño completo de navegación por categorías, iconografía a color, tipografía de marca y membrete consistente en todos los PDF."),
+        ("v2.2", "Seguridad: login con usuario/contraseña, roles (Administrador/Revisor/Preparador) y Gestión de Usuarios."),
+        ("v2.1", "Módulos de Activo Fijo, Razones Financieras, Cumplimiento SAT, Revisión y Aprobación, Checklist PBC y Bitácora de Auditoría."),
+        ("v2.0", "Suite base: conciliación de Bancos, XML, Saldos, Multidivisa, Nómina e Inventarios, con Dashboard ejecutivo."),
+    ]
+    for version, descripcion in _hitos_version:
+        st.markdown(f"""<div class="help-card" style="padding:14px 20px;">
+            <span style="color:#38BDF8; font-weight:800;">{version}</span>
+            <span style="color:#C4CDD8; margin-left:10px;">{descripcion}</span>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown(f'<div class="section-header">{icono("scale")} Aviso Legal y Privacidad</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="help-card">
+        <ul style="color:#C4CDD8; font-size:13.5px; line-height:1.9; margin:0; padding-left:20px;">
+            <li>Los datos que subes (estados de cuenta, XML, nóminas, etc.) se procesan <b>en memoria, dentro de esta sesión</b> — no se envían ni almacenan en servidores externos de TaxFlow-Diamond.</li>
+            <li>Los usuarios del sistema y las auditorías guardadas (Multiempresa) viven en la memoria del servidor mientras esté corriendo — no hay base de datos externa detrás. Si el servidor se reinicia, se pierden.</li>
+            <li>Tu contraseña de e.firma y tu llave privada (.key), usadas en Descarga Masiva SAT, nunca se guardan en disco ni se registran en la Bitácora.</li>
+            <li>El respaldo <code>.JSON</code> descargable es tu responsabilidad — consérvalo si quieres recuperar tu trabajo entre sesiones.</li>
+            <li>Esta herramienta es un apoyo operativo para conciliación contable y fiscal; no sustituye el criterio profesional de tu auditor, contador o asesor fiscal.</li>
+        </ul>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='text-align:center; color:#5B6472; font-size:12px; margin-top:24px;'>TaxFlow-Diamond · v2.4 · Desarrollado por Jose Valencia</div>", unsafe_allow_html=True)
+
 def render_ayuda():
     st.write("")
     st.markdown(f'<div class="section-header">{icono("help")} Manual Operativo Diamond y Documentación de Herramientas</div>', unsafe_allow_html=True)
@@ -3177,6 +3286,7 @@ CATEGORIAS = {
         (":violet[:material/group:]", "Gestión de Usuarios", render_gestion_usuarios),
         (":orange[:material/download:]", "Centro de Exportación", render_centro_exportacion),
         (":blue[:material/help:]", "Ayuda", render_ayuda),
+        (":blue[:material/diamond:]", "Acerca de", render_acerca_de),
     ],
 }
 
